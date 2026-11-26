@@ -1,816 +1,5 @@
 <!DOCTYPE html>
-<html lang="th" class="dark"><head><script data-bard-client-injected="true">
-  document.addEventListener('input', (event) => {
-    if (event.target && (event.target.isContentEditable || event.target.hasAttribute('contenteditable'))) {
-      const clonedDoc = document.cloneNode(true);
-      const injectedScripts = clonedDoc.querySelectorAll('[data-bard-client-injected="true"]');
-      injectedScripts.forEach(el => el.remove());
-      window.parent.postMessage({
-        type: 'inlineEdit',
-        html: '<!DOCTYPE html>\n' + clonedDoc.documentElement.outerHTML
-      }, '*');
-    }
-  });
-</script><script data-bard-client-injected="true">(function(){'use strict';window.addEventListener("message",a=>{a.data&&a.data.type==="SUPPLEMENTAL_DATA_UPDATE"&&window.dispatchEvent(new CustomEvent("supplementaldataupdate",{detail:a.data.data}))});}).call(this);
-</script><script data-bard-client-injected="true">(function() {
-  const SCROLL_KEYS = new Set([
-    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-    ' ', 'Spacebar', 'PageUp', 'PageDown', 'Home', 'End',
-  ]);
-  const HORIZONTAL_KEYS = new Set(['ArrowLeft', 'ArrowRight']);
-
-  function isTextEntryTarget(target) {
-    if (!target) return false;
-    const tagName = target.tagName;
-    return tagName === 'INPUT' || tagName === 'TEXTAREA' ||
-        tagName === 'SELECT' || target.isContentEditable === true;
-  }
-
-  // An element absorbs the key only if it both overflows on the axis being
-  // scrolled and is configured to scroll on that axis. The cheap dimension
-  // test runs first because getComputedStyle forces a style recalc, and this
-  // runs on every keypress. Each axis is read from its own longhand: the
-  // 'overflow' shorthand serializes as two values when the axes differ, which
-  // is the common 'overflow-x: hidden; overflow-y: auto' pane.
-  function canScroll(node, horizontal) {
-    const overflows = horizontal ? node.scrollWidth > node.clientWidth
-                                 : node.scrollHeight > node.clientHeight;
-    if (!overflows) return false;
-    const style = window.getComputedStyle(node);
-    const overflow = horizontal ? style.overflowX : style.overflowY;
-    return overflow === 'auto' || overflow === 'scroll';
-  }
-
-  // Walks up from the event target so nested scrollers keep their behavior.
-  // <body> is included because pages that pin the root height make it the
-  // scroll container.
-  function hasScrollableAncestor(target, horizontal) {
-    let node = target;
-    while (node && node !== document.documentElement) {
-      if (canScroll(node, horizontal)) return true;
-      node = node.parentElement;
-    }
-    return false;
-  }
-
-  function rootCanScroll(horizontal) {
-    const scroller = document.scrollingElement || document.documentElement;
-    if (!scroller) return false;
-    // Tolerate a pixel of rounding so subpixel layouts do not look scrollable.
-    return horizontal ? scroller.scrollWidth > window.innerWidth + 1
-                      : scroller.scrollHeight > window.innerHeight + 1;
-  }
-
-  window.addEventListener('keydown', function(event) {
-    if (!SCROLL_KEYS.has(event.key)) return;
-    if (event.defaultPrevented) return;
-    // Alt and Meta turn arrows into browser history navigation, and Ctrl is
-    // reserved for shortcuts, so none of them are scroll intent.
-    if (event.altKey || event.metaKey || event.ctrlKey) return;
-
-    const target = event.target;
-    if (isTextEntryTarget(target)) return;
-
-    // Anything that can still absorb the scroll gets to keep it.
-    const horizontal = HORIZONTAL_KEYS.has(event.key);
-    if (rootCanScroll(horizontal)) return;
-    if (hasScrollableAncestor(target, horizontal)) return;
-
-    event.preventDefault();
-  }, {capture: true, passive: false});
-})();</script><script data-bard-client-injected="true">(function() {
-  // Ensure this script is executed only once
-  if (window.firebaseAuthBridgeScriptLoaded) {
-    return;
-  }
-  window.firebaseAuthBridgeScriptLoaded = true;
-
-  let nextTokenPromiseId = 0;
-
-  // Stores { resolve, reject } for ongoing token requests
-  const pendingTokenPromises = {};
-
-  // Listen for messages from the Host Application
-  window.addEventListener('message', function(event) {
-
-    const messageData = event.data;
-
-  if (messageData && messageData.type === 'RESOLVE_NEW_FIREBASE_TOKEN') {
-      const { success, token, error, promiseId } = messageData ?? {};
-      if (pendingTokenPromises[promiseId]) {
-        if (success) {
-          pendingTokenPromises[promiseId].resolve(token);
-        } else {
-          pendingTokenPromises[promiseId].reject(new Error(error || 'Token refresh failed from host.'));
-        }
-        delete pendingTokenPromises[promiseId];
-      }
-    }
-  });
-
-  // Expose a function for the Generated App to request a new Firebase token
-  window.requestNewFirebaseToken = function() {
-    const currentPromiseId = nextTokenPromiseId++;
-    const promise = new Promise((resolve, reject) => {
-      pendingTokenPromises[currentPromiseId] = { resolve, reject };
-    });
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({
-        type: 'REQUEST_NEW_FIREBASE_TOKEN',
-        promiseId: currentPromiseId
-      }, '*');
-    } else {
-      pendingTokenPromises[currentPromiseId].reject(new Error('No parent window to request token from.'));
-      delete pendingTokenPromises[currentPromiseId];
-    }
-    return promise;
-  };
-})();</script><script data-bard-client-injected="true">
-let realOriginalGetUserMedia = null;
-if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-  realOriginalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-}
-
-(function() {
-  if (navigator.mediaDevices && navigator.mediaDevices.__proto__) {
-    try {
-      Object.defineProperty(navigator.mediaDevices.__proto__, 'getUserMedia', {
-        get: function() {
-          return undefined; // Or throw an error
-        },
-        configurable: false
-      });
-    } catch (error) {
-      console.error("Error defining prototype getter:", error);
-    }
-  }
-})();
-
-(function() {
-  const pendingMediaResolvers = {};
-  let nextMediaPromiseId = 0;
-
-  function requestMediaPermissions(constraints) {
-    const mediaPromiseId = nextMediaPromiseId++;
-    const promise = new Promise((resolve, reject) => {
-      pendingMediaResolvers[mediaPromiseId] = (granted) => {
-        delete pendingMediaResolvers[mediaPromiseId];
-        resolve(granted);
-      };
-    });
-
-    window.parent.postMessage({
-      type: 'requestMediaPermission',
-      constraints: constraints,
-      promiseId: mediaPromiseId,
-    }, '*');
-
-    return promise;
-  }
-
-  let originalGetUserMedia = realOriginalGetUserMedia;
-
-  function interceptGetUserMedia() {
-    if (navigator.mediaDevices) {
-      Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
-        value: function(constraints) {
-          return requestMediaPermissions(constraints).then((granted) => {
-            if (granted) {
-              if (originalGetUserMedia) {
-                return originalGetUserMedia(constraints);
-              } else {
-                throw new Error("Original getUserMedia not available.");
-              }
-            } else {
-              throw new DOMException('Permission denied', 'NotAllowedError');
-            }
-          });
-        },
-        writable: false,
-        configurable: false
-      });
-    }
-  }
-
-  interceptGetUserMedia();
-
-  const observer = new MutationObserver(function(mutationsList, observer) {
-    for (const mutation of mutationsList) {
-      if (mutation.type === 'reconfigured' && mutation.name === 'getUserMedia' && mutation.object === navigator.mediaDevices) {
-        interceptGetUserMedia();
-      } else if (mutation.type === 'attributes' && mutation.attributeName === 'getUserMedia' && mutation.target === navigator.mediaDevices) {
-        interceptGetUserMedia();
-      } else if (mutation.type === 'childList' && mutation.addedNodes) {
-        mutation.addedNodes.forEach(node => {
-          if (node === navigator.mediaDevices) {
-            interceptGetUserMedia();
-          }
-        });
-      }
-    }
-  });
-
-  function interceptSpeechRecognition() {
-    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-      return;
-    }
-
-    const OriginalSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    const SpeechRecognitionWrapper = function(...args) {
-      const recognizer = new OriginalSpeechRecognition(...args);
-      const originalStart = recognizer.start.bind(recognizer);
-
-      recognizer.start = function() {
-        requestMediaPermissions({ audio: true }).then(granted => {
-          if (granted) {
-            originalStart();
-          } else {
-            const errorEvent = new SpeechRecognitionErrorEvent('error');
-            errorEvent.error = 'not-allowed'; // This is the standard error for permission denial.
-            recognizer.dispatchEvent(errorEvent);
-          }
-        });
-      };
-
-      return recognizer;
-    };
-
-    SpeechRecognitionWrapper.prototype = OriginalSpeechRecognition.prototype;
-    SpeechRecognitionWrapper.prototype.constructor = SpeechRecognitionWrapper;
-
-    if (window.SpeechRecognition) {
-      window.SpeechRecognition = SpeechRecognitionWrapper;
-    }
-    if (window.webkitSpeechRecognition) {
-      window.webkitSpeechRecognition = SpeechRecognitionWrapper;
-    }
-  }
-
-  interceptSpeechRecognition();
-
-  window.addEventListener('message', function(event) {
-    if (event.data) {
-      if (event.data.type === 'resolveMediaPermission') {
-        const { promiseId, granted } = event.data;
-        if (pendingMediaResolvers[promiseId]) {
-          pendingMediaResolvers[promiseId](granted);
-        }
-      }
-    }
-  });
-
-})();</script><script ws-interception-config="{&quot;parentOrigin&quot;:&quot;https://gemini.google.com&quot;,&quot;proxiedDomains&quot;:[]}" data-bard-client-injected="true">(function(){'use strict';var u=typeof Object.defineProperties=="function"?Object.defineProperty:function(b,d,e){if(b==Array.prototype||b==Object.prototype)return b;b[d]=e.value;return b};function v(b){b=["object"==typeof globalThis&&globalThis,b,"object"==typeof window&&window,"object"==typeof self&&self,"object"==typeof global&&global];for(var d=0;d<b.length;++d){var e=b[d];if(e&&e.Math==Math)return e}throw Error("Cannot find global object");}var w=v(this);
-function y(b,d){if(d)a:{var e=w;b=b.split(".");for(var h=0;h<b.length-1;h++){var k=b[h];if(!(k in e))break a;e=e[k]}b=b[b.length-1];h=e[b];d=d(h);d!=h&&d!=null&&u(e,b,{configurable:!0,writable:!0,value:d})}}function z(b){function d(h){return b.next(h)}function e(h){return b.throw(h)}return new Promise(function(h,k){function m(n){n.done?h(n.value):Promise.resolve(n.value).then(d,e).then(m,k)}m(b.next())})}y("globalThis",function(b){return b||w});/*
-
- Copyright The Closure Library Authors.
- SPDX-License-Identifier: Apache-2.0
-*/
-function A(b,d){function e(){}e.prototype=d.prototype;b.i=d.prototype;b.prototype=new e;b.prototype.constructor=b;b.h=function(h,k,m){for(var n=Array(arguments.length-2),p=2;p<arguments.length;p++)n[p-2]=arguments[p];return d.prototype[k].apply(h,n)}};function B(b,d,e="*"){function h(a){if(typeof a==="string")return F.encode(a).buffer;if(a instanceof ArrayBuffer)return a.slice(0);if(ArrayBuffer.isView(a))return a.buffer.slice(a.byteOffset,a.byteOffset+a.byteLength);throw Error("Invalid data type");}function k(a){a=h(a);var f={type:"send",data:new Uint8Array(a)},g;(g=r)==null||g.postMessage(f,[a])}function m(){if(!r)throw Error("Data port not captured yet.");r.onmessage=a=>{if(a.data.type==="message"){a=new MessageEvent("message",{data:G.decode(a.data.data)});
-let f;(f=c.onmessage)==null||f.call(c,a);c.dispatchEvent(a)}}}function n(){if(!t)throw Error("Control port not captured yet.");t.onmessage=a=>{switch(a.data.type){case "open":l=1;var f=new Event("open"),g;(g=c.onopen)==null||g.call(c,f);c.dispatchEvent(f);q.forEach(H=>{k(H)});q=[];break;case "close":g=a.data;l=3;g=new CloseEvent("close",{code:g.code,reason:g.reason,wasClean:g.wasClean});(f=c.onclose)==null||f.call(c,g);c.dispatchEvent(g);break;case "error":l=3;f=new Event("error");let x;(x=c.onerror)==
-null||x.call(c,f);c.dispatchEvent(f)}}}function p(a){return z(function*(){var f=new MessageChannel;t=f.port1;var g=new MessageChannel;r=g.port1;n();m();window.parent.postMessage({type:"websocket_open",portOrdering:["control","data"],url:b,protocols:a||[],connectionId:I},e,[f.port2,g.port2])}())}var c=Reflect.construct(EventTarget,[],new.target);c.CONNECTING=0;c.OPEN=1;c.CLOSING=2;c.CLOSED=3;c.url=b;c.binaryType="arraybuffer";c.protocol="";c.extensions="";var l=0,t=null,r=null,q=[],F=new TextEncoder,
-G=new TextDecoder;c.onopen=null;c.onmessage=null;c.onclose=null;c.onerror=null;Object.defineProperty(c,"readyState",{get:()=>l,enumerable:!0,configurable:!0});Object.defineProperty(c,"bufferedAmount",{get:()=>{var a=0;q.forEach(f=>{a+=typeof f==="string"?f.length:f.byteLength});return a},enumerable:!0,configurable:!0});var I=function(){var a;return((a=globalThis.crypto)==null?0:a.randomUUID)?globalThis.crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,f=>{var g=Math.random()*
-16|0;return(f==="x"?g:g&3|8).toString(16)})}();c.send=a=>{if(l===1)a instanceof Blob?a.arrayBuffer().then(f=>{k(f)}):k(a);else if(l===0)if(typeof a==="string")q.push(a);else if(a instanceof ArrayBuffer||ArrayBuffer.isView(a))q.push(h(a));else throw Error("Sending Blob is not supported before the connection is open.");else console.debug("WebSocket send called in CLOSING or CLOSED state; ignored.")};c.close=(a=1E3,f="")=>{if(l!==2&&l!==3){l=2;a={type:"close",code:a,reason:f,wasClean:a===1E3};var g;
-(g=t)==null||g.postMessage(a)}};Promise.resolve().then(()=>p(d));return c}A(B,EventTarget);var C=document.currentScript,D=C==null?void 0:C.getAttribute("ws-interception-config");if(!D)throw Error("WebSocket Interceptor: Missing ws-interception-config attribute in the script tag.");var E=JSON.parse(D);if(!E.parentOrigin||typeof E.parentOrigin!=="string")throw Error("WebSocket Interceptor: Invalid parentOrigin in ws-interception-config");
-(function(b){var d=Object.getOwnPropertyDescriptor(window,"WebSocket");if(!d||d.writable||d.configurable)d=Object.assign(function(e,h){try{let k=(new URL(e)).hostname;if(b.proxiedDomains.some(m=>k===m||k.endsWith(`.${m}`)))return new B(e,h,b.parentOrigin)}catch(k){throw window.parent.postMessage({type:"websocket_blocked",url:e,reason:"blocked_invalid_url"},b.parentOrigin),new DOMException(`WebSocket connection to '${e}' is not allowed in Canvas.`,"SecurityError");}window.parent.postMessage({type:"websocket_blocked",
-url:e,reason:"blocked_domain_not_allowlisted"},b.parentOrigin);throw new DOMException(`WebSocket connection to '${e}' is not allowed in Canvas.`,"SecurityError");},{CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3}),Object.defineProperty(window,"WebSocket",{value:d,writable:!1,configurable:!1})})({proxiedDomains:E.proxiedDomains||[],parentOrigin:E.parentOrigin});}).call(this);
-</script><script data-bard-client-injected="true">((function(modelInformation) {
-  const originalFetch = window.fetch;
-  // TODO: b/421908508 - Move these out of the script and match all generative AI model calls.
-  let googleLlmBaseApiUrls = [
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.textModelName + ':streamGenerateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.textModelName + ':generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.imageModelName + ':predict',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.imageModelName + ':predictLongRunning',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.imageEditModelName + ':generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.imageTransformModelName + ':generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.videoModelName + ':predict',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.videoModelName + ':predictLongRunning',
-    'https://generativelanguage.googleapis.com/v1beta/models/' + modelInformation.ttsModelName + ':generateContent',
-  ];
-  modelInformation.deprecatedTextModelNames.forEach((modelName) => {
-    googleLlmBaseApiUrls.push(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':streamGenerateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent',
-    );
-  });
-  modelInformation.deprecatedImageModelNames.forEach((modelName) => {
-    googleLlmBaseApiUrls.push(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':predict',
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':predictLongRunning',
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':streamGenerateContent',
-    );
-  });
-  modelInformation.deprecatedGenerateImageModelNames.forEach((modelName) => {
-    googleLlmBaseApiUrls.push(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':streamGenerateContent',
-    );
-  });
-  modelInformation.deprecatedImageTransformModelNames.forEach((modelName) => {
-    googleLlmBaseApiUrls.push(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':streamGenerateContent',
-    );
-  });
-
-  const pendingFetchResolvers = {};
-  let nextPromiseId = 0;
-
-  function handleStringInput(input, optionsArgument) {
-    const actualUrl = input;
-    const fetchCallArgs = [actualUrl, optionsArgument];
-    const effectiveOptions = optionsArgument || {};
-    const bodyForApiKeyCheck = effectiveOptions.body;
-    const bodyForPostMessage = effectiveOptions.body;
-    return { actualUrl, fetchCallArgs, effectiveOptions, bodyForApiKeyCheck, bodyForPostMessage };
-  }
-
-  function handleRequestInput(input, optionsArgument) {
-    const actualUrl = input.url;
-    const fetchCallArgs = [input, optionsArgument];
-    const effectiveOptions = { method: input.method, headers: new Headers(input.headers) };
-    let bodyForApiKeyCheck;
-    let bodyForPostMessage;
-
-    if (optionsArgument) {
-      if (optionsArgument.method) effectiveOptions.method = optionsArgument.method;
-      if (optionsArgument.headers) effectiveOptions.headers = new Headers(optionsArgument.headers);
-      if ('body' in optionsArgument) {
-        bodyForApiKeyCheck = optionsArgument.body;
-        bodyForPostMessage = optionsArgument.body;
-      } else {
-        bodyForApiKeyCheck = undefined;
-        bodyForPostMessage = input.body;
-      }
-    } else {
-      bodyForApiKeyCheck = undefined;
-      bodyForPostMessage = input.body;
-    }
-    return { actualUrl, fetchCallArgs, effectiveOptions, bodyForApiKeyCheck, bodyForPostMessage };
-  }
-
-  window.fetch = function(input, optionsArgument) {
-    let actualUrl;
-    let fetchCallArgs;
-    let effectiveOptions = {};
-    let bodyForApiKeyCheck;
-    let bodyForPostMessage;
-
-    if (typeof input === 'string') {
-      ({actualUrl, fetchCallArgs, effectiveOptions, bodyForApiKeyCheck, bodyForPostMessage} = handleStringInput(input, optionsArgument));
-    } else if (input instanceof Request) {
-      ({actualUrl, fetchCallArgs, effectiveOptions, bodyForApiKeyCheck, bodyForPostMessage} = handleRequestInput(input, optionsArgument));
-    } else {
-      return originalFetch.apply(window, [input, optionsArgument]);
-    }
-
-    effectiveOptions.method = effectiveOptions.method || 'GET';
-    if (!effectiveOptions.headers) {
-      effectiveOptions.headers = new Headers();
-    }
-
-
-    if (typeof actualUrl === 'string' && googleLlmBaseApiUrls.some((url) => actualUrl.startsWith(url))) {
-      let apiKeyIsNull = true;
-
-      const regex = new RegExp("models/([^:]+)");
-      const modelNameMatch = actualUrl.match(regex);
-      const modelName = modelNameMatch ? modelNameMatch[1] : 'unspecified';
-
-
-      try {
-        const urlObject = new URL(actualUrl);  // Use URL object for robust parsing
-        const apiKeyParam = urlObject.searchParams.get('key');
-        if (apiKeyParam) {
-          apiKeyIsNull = false;
-        }
-      } catch (e) {
-        // Continue checks even if URL parsing fails
-      }
-
-      if (apiKeyIsNull && effectiveOptions.headers) {
-        const h = new Headers(effectiveOptions.headers);
-        const apiKeyHeaderValue = h.get('X-API-Key') || h.get('x-api-key');
-        if (apiKeyHeaderValue) {
-          apiKeyIsNull = false;
-          return originalFetch.apply(window, fetchCallArgs);
-        }
-      }
-
-      if (apiKeyIsNull && effectiveOptions.method && ['POST', 'PUT', 'PATCH'].includes(effectiveOptions.method.toUpperCase()) && typeof bodyForApiKeyCheck === 'string') {
-        try {
-          const bodyData = JSON.parse(bodyForApiKeyCheck);
-          if (bodyData && bodyData.apiKey) {
-            apiKeyIsNull = false;
-            return originalFetch.apply(window, fetchCallArgs);
-          }
-        } catch (e) {
-          // Ignore JSON parsing errors
-        }
-      }
-
-      if(apiKeyIsNull) {
-        const promiseId = nextPromiseId++;
-        const promise = new Promise((resolve) => {
-          pendingFetchResolvers[promiseId] = (resolvedResponse) => {
-            delete pendingFetchResolvers[promiseId];
-            resolve(resolvedResponse);
-          };
-        });
-
-        let serializedBodyForPostMessage;
-        if (typeof bodyForPostMessage === 'string' || bodyForPostMessage == null) {
-            serializedBodyForPostMessage = bodyForPostMessage;
-        } else if (bodyForPostMessage instanceof ReadableStream) {
-            serializedBodyForPostMessage = null;
-        } else {
-            try {
-                serializedBodyForPostMessage = JSON.stringify(bodyForPostMessage);
-            } catch (e) {
-                serializedBodyForPostMessage = null;
-            }
-        }
-
-        const messageOptions = {
-            method: effectiveOptions.method,
-            headers: Object.fromEntries(new Headers(effectiveOptions.headers).entries()),
-            body: serializedBodyForPostMessage
-        };
-
-        window.parent.postMessage({
-          type: 'requestFetch',
-          url: actualUrl,
-          modelName: modelName,
-          options: messageOptions,
-          promiseId: promiseId,
-        }, '*');
-
-        return promise;
-      }
-      return originalFetch.apply(window, fetchCallArgs);
-    }
-    return originalFetch.apply(window, fetchCallArgs);
-  };
-
-  window.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'resolveFetch') {
-      const { promiseId, response } = event.data;
-      if (pendingFetchResolvers[promiseId]) {
-        try {
-          const reconstructedResponse = new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: new Headers(response.headers),
-          });
-          pendingFetchResolvers[promiseId](reconstructedResponse);
-        } catch (error) {
-          pendingFetchResolvers[promiseId](new Response(null, { status: 500, statusText: "Interceptor Response Reconstruction Error" }));
-        }
-      }
-    }
-  });
-
-}))({"textModelName":"gemini-3-flash-preview","imageModelName":"imagen-4.0-generate-001","imageEditModelName":"gemini-3.1-flash-image","imageTransformModelName":"gemini-3-pro-image","videoModelName":"veo-2.0-generate-001","ttsModelName":"gemini-2.5-flash-preview-tts","deprecatedTextModelNames":["gemini-2.0-flash","gemini-2.5-flash","gemini-2.5-flash-preview-04-17","gemini-2.5-flash-preview-05-20","gemini-2.5-flash-preview-09-2025"],"deprecatedImageModelNames":["imagen-3.0-generate-001","imagen-3.0-generate-002"],"deprecatedGenerateImageModelNames":["gemini-2.5-flash-image-preview","gemini-2.5-flash-image","gemini-3.1-flash-image-preview"],"deprecatedImageTransformModelNames":["gemini-3-pro-image-preview-11-2025"]})</script><script data-bard-client-injected="true">(function() {
-  const OVERLAY_SELECTOR =
-    'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="combobox"]';
-
-  function isVisibleOverlay(element) {
-    if (element.closest('[hidden], [aria-hidden="true"], [inert]')) {
-      return false;
-    }
-    if (window.getComputedStyle(element).visibility === 'hidden') {
-      return false;
-    }
-    for (let cur = element; cur; cur = cur.parentElement) {
-      if (window.getComputedStyle(cur).display === 'none') {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function hasOpenOverlay() {
-    const candidates = document.querySelectorAll(OVERLAY_SELECTOR);
-    for (let i = 0; i < candidates.length; i++) {
-      if (isVisibleOverlay(candidates[i])) {
-        return true;
-      }
-    }
-    try {
-      if (document.querySelector('[popover]:popover-open')) {
-        return true;
-      }
-    } catch (e) {
-      // Ignore engines that do not support :popover-open.
-    }
-    return false;
-  }
-
-  function isNonEmptySearchInput(target) {
-    return (
-      Boolean(target) &&
-      target.tagName === 'INPUT' &&
-      typeof target.type === 'string' &&
-      target.type.toLowerCase() === 'search' &&
-      typeof target.value === 'string' &&
-      target.value.length > 0
-    );
-  }
-
-  function shouldIgnoreEscape(event) {
-    return (
-      event.key !== 'Escape' ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.shiftKey ||
-      event.isComposing ||
-      event.repeat ||
-      event.keyCode === 229 ||
-      isNonEmptySearchInput(event.target)
-    );
-  }
-
-  let shouldIgnoreCaptureState = false;
-
-  window.addEventListener(
-    'keydown',
-    function(event) {
-      if (event.key === 'Escape') {
-        shouldIgnoreCaptureState =
-          hasOpenOverlay() || isNonEmptySearchInput(event.target);
-      }
-    },
-    {capture: true},
-  );
-
-  window.addEventListener('keydown', function(event) {
-    if (
-      shouldIgnoreEscape(event) ||
-      event.defaultPrevented ||
-      shouldIgnoreCaptureState
-    ) {
-      return;
-    }
-    const wasBlockedOnCapture = shouldIgnoreCaptureState;
-    queueMicrotask(function() {
-      if (event.defaultPrevented || wasBlockedOnCapture) {
-        return;
-      }
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({'type': 'escapeKey'}, '*');
-      }
-    });
-  });
-})();</script><script data-bard-client-injected="true">(function() {
-  function normalizeSlug(str) {
-    try {
-      return str
-        .trim()
-        .toLowerCase()
-        .replace(/[^p{L}p{N}s_-]/gu, '')
-        .replace(/s+/g, '-');
-    } catch (e) {
-      return str
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9s_-]/g, '')
-        .replace(/s+/g, '-');
-    }
-  }
-
-  function findTargetElement(hash) {
-    if (!hash || hash === '#') {
-      return null;
-    }
-    const rawId = hash.startsWith('#') ? hash.slice(1) : hash;
-    let decodedId = rawId;
-    try {
-      decodedId = decodeURIComponent(rawId);
-    } catch (e) {
-      // Ignore URI malformed errors.
-    }
-
-    // 1. Direct ID match (raw and decoded).
-    let target = document.getElementById(rawId) || document.getElementById(decodedId);
-    if (target) {
-      return target;
-    }
-
-    // 2. Name attribute match (<a name="...">).
-    try {
-      if (typeof CSS !== 'undefined' && CSS.escape) {
-        target =
-          document.querySelector('[name="' + CSS.escape(rawId) + '"]') ||
-          document.querySelector('[name="' + CSS.escape(decodedId) + '"]');
-      } else {
-        const namedElements = document.getElementsByName(rawId);
-        if (namedElements && namedElements.length > 0) {
-          return namedElements[0];
-        }
-      }
-    } catch (e) {
-      // Ignore querySelector syntax errors.
-    }
-    if (target) {
-      return target;
-    }
-
-    // 3. Match heading text by slug (for Markdown TOCs where headings lack explicit IDs).
-    const targetSlug = normalizeSlug(decodedId);
-    if (targetSlug) {
-      for (const heading of document.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
-        if (normalizeSlug(heading.textContent || '') === targetSlug) {
-          return heading;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  document.addEventListener('click', function(event) {
-    const target = event.target;
-    const anchor = target && typeof target.closest === 'function' ? target.closest('a') : null;
-    if (!anchor) {
-      return;
-    }
-
-    const href = anchor.getAttribute('href');
-    if (
-      !href ||
-      href.trim().toLowerCase().startsWith('javascript:') ||
-      anchor.hasAttribute('download')
-    ) {
-      return;
-    }
-
-    // Check if the link is an in-page hash / anchor link.
-    if (href.startsWith('#')) {
-      event.preventDefault();
-      const targetElement = findTargetElement(href);
-      if (targetElement) {
-        targetElement.scrollIntoView({behavior: 'smooth', block: 'start'});
-      }
-      return;
-    }
-
-    // Check if the URL has the same origin/pathname but with a hash.
-    try {
-      const url = new URL(anchor.href, window.location.href);
-      if (
-        url.hash &&
-        url.origin === window.location.origin &&
-        url.pathname === window.location.pathname
-      ) {
-        event.preventDefault();
-        const targetElement = findTargetElement(url.hash);
-        if (targetElement) {
-          targetElement.scrollIntoView({behavior: 'smooth', block: 'start'});
-        }
-        return;
-      }
-    } catch (e) {
-      // Fall through if URL parsing fails.
-    }
-
-    // For all external or full navigation links, prevent iframe-level navigation
-    // (which breaks in AGSA WebView or sandboxed iframes) and ensure they open
-    // safely in a new tab/window.
-    if (anchor.target !== '_blank') {
-      event.preventDefault();
-      window.open(anchor.href, '_blank', 'noopener,noreferrer');
-    }
-  }, {capture: true});
-})();</script><script data-bard-client-injected="true">(function(){'use strict';function a(){window.parent.postMessage({type:"interaction"},"*")}window.addEventListener("click",a,{capture:!0,passive:!0});window.addEventListener("touchstart",a,{capture:!0,passive:!0});window.addEventListener("keydown",a,{capture:!0,passive:!0});}).call(this);
-</script><script data-bard-client-injected="true">(function() {
-  const originalConsoleLog = console.log;
-  const originalConsoleError = console.error;
-
-    /**
-   * Normalizes an error event or a promise rejection reason into a structured error object.
-   * @param {*} errorEventOrReason The error object or reason.
-   * @return {object} Structured error data { message, name, stack }.
-   */
-  function getErrorObject(errorEventOrReason) {
-    if (errorEventOrReason instanceof Error) {
-      return {
-        message: errorEventOrReason.message,
-        name: errorEventOrReason.name,
-        stack: errorEventOrReason.stack,
-      };
-    }
-    // Fallback for non-Error objects.
-    try {
-      return {
-        message: JSON.stringify(errorEventOrReason),
-        name: 'UnknownErrorType',
-        stack: null,
-      };
-    } catch (e) {
-      return {
-        message: String(errorEventOrReason),
-        name: 'UnknownErrorTypeNonStringifiable',
-        stack: null,
-      };
-    }
-  }
-
-  /**
-   * Converts an array of arguments (from log/error) into a single string.
-   * Handles Error objects specially to include their message and stack.
-   * @param {Array<*>} args - Arguments passed to console methods.
-   * @return {string} A string representation of the arguments.
-   */
-  function stringifyArgs(args) {
-    return args
-      .map((arg) => {
-        if (arg instanceof Error) {
-          const {message, stack} = arg;
-          return `Error: ${message}${stack ? ('\nStack: ' + stack) : ''}`;
-        }
-        if (typeof arg === 'object' && arg !== null) {
-          try {
-            return JSON.stringify(arg);
-          } catch (error) {
-            return '[Circular Object]';
-          }
-        } else {
-          return String(arg);
-        }
-      })
-      .join(' ');
-  }
-
-  console.log = function(...args) {
-    const logString = stringifyArgs(args);
-    window.parent.postMessage({ type: 'log', message: logString }, '*');
-    originalConsoleLog.apply(console, args);
-  };
-
-  console.error = function(...args) {
-    let errorData;
-    if (args.length > 0 && args[0] instanceof Error) {
-      const err = args[0];
-      // If the first arg is an Error, capture its details.
-      errorData = {
-        type: 'error',
-        source: 'CONSOLE_ERROR',
-        ...getErrorObject(err),
-        rawArgsString: stringifyArgs(args.slice(1)),
-        timestamp: new Date().toISOString(),
-      };
-    } else {
-      // If not an Error object, treat all args as a general error message.
-      errorData = {
-        type: 'error',
-        source: 'CONSOLE_ERROR',
-        message: stringifyArgs(args),
-        name: 'ConsoleLoggedError',
-        stack: null,
-        timestamp: new Date().toISOString(),
-      };
-    }
-    window.parent.postMessage(errorData, '*');
-    originalConsoleError.apply(console, args);
-  };
-
-  // Listen for global unhandled synchronous errors.
-  window.addEventListener('error', function(event) {
-    const errorDetails = event.error ? getErrorObject(event.error) : {
-      message: event.message,
-      name: 'GlobalError',
-      stack: null,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno,
-    };
-
-    window.parent.postMessage({
-      type: 'error',
-      source: 'global',
-      ...errorDetails,
-      message: errorDetails.message || event.message,
-      timestamp: new Date().toISOString(),
-    }, '*');
-  });
-
-  // Listen for unhandled promise rejections (asynchronous errors).
-  window.addEventListener('unhandledrejection', function(event) {
-    const errorDetails = getErrorObject(event.reason);
-
-    window.parent.postMessage({
-      type: 'error',
-      source: 'unhandledrejection',
-      ...errorDetails,
-      message: errorDetails.message || 'Unhandled Promise Rejection',
-      timestamp: new Date().toISOString(),
-    }, '*');
-  });
-
-})();</script>
+<html lang="th" class="dark"><head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0B0F17">
@@ -971,7 +160,7 @@ url:e,reason:"blocked_domain_not_allowlisted"},b.parentOrigin);throw new DOMExce
 
     <!-- 3D WebGL Massing Pane -->
     <div id="pane-3d" class="hidden">
-      <div id="webgl-container" style="touch-action: none;" class="w-full h-full"></div>
+      <div id="webgl-container" style="touch-action: none;" class="w-full h-full"><canvas width="300" height="150" style="display: block;"></canvas></div>
       <div id="webgl-hint-bar" class="absolute bottom-[68px] md:bottom-4 left-3 z-10 pointer-events-none flex items-center gap-1.5 hud-glass px-2.5 py-1.5 rounded-xl text-[11px]">
         <span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono-num font-semibold">3D MASSING</span>
         <span class="text-slate-400 hidden sm:inline" data-i18n="orbitHint">คลิกซ้าย: หมุน • คลิกขวา: เลื่อน • สกรอลล์: ซูม</span>
@@ -1093,31 +282,7 @@ url:e,reason:"blocked_domain_not_allowlisted"},b.parentOrigin);throw new DOMExce
 
     <!-- Mobile Tab 2: Metrics, Fire Egress & Schedule (Shown only on Mobile when Metrics tab active) -->
     <div id="mobile-metrics-pane" class="hidden md:hidden p-4 overflow-y-auto hud-scroll space-y-3 flex-1 safe-bottom">
-      <div id="mobile-feasibility-slot"><div id="feasibility-banner" class="pointer-events-auto hud-glass rounded-2xl px-3.5 py-2.5 border-l-4 border-rose-500 transition-colors">
-      <div class="flex items-center justify-between">
-        <span id="feasibility-title" class="text-xs font-bold text-rose-400">เกินเกณฑ์/พื้นที่ไม่พอ • CHECK</span>
-        <span id="feasibility-eff" class="text-xs font-mono-num font-bold text-white">24%</span>
-      </div>
-      <p id="feasibility-msg" class="text-[11px] text-slate-300 mt-0.5 leading-snug">วางได้ 9 ห้อง (ขาดอีก 15 ห้อง — ลองขยายความกว้างอาคาร)</p>
-
-      <!-- Live Fire Egress Verification Bar -->
-      <div class="mt-2 pt-2 border-t border-slate-700/60 grid grid-cols-2 gap-1.5 text-[10px] font-mono-num">
-        <div class="bg-slate-900/80 rounded-lg px-2 py-1 border border-slate-800">
-          <div class="text-slate-400">MAX EGRESS</div>
-          <div class="flex items-center justify-between mt-0.5">
-            <span id="egress-dist-val" class="text-white font-semibold">28.9m / 60m</span>
-            <span id="egress-dist-badge" class="px-1 rounded font-bold bg-emerald-500/20 text-emerald-300">PASS</span>
-          </div>
-        </div>
-        <div class="bg-slate-900/80 rounded-lg px-2 py-1 border border-slate-800">
-          <div class="text-slate-400">DEAD-END</div>
-          <div class="flex items-center justify-between mt-0.5">
-            <span id="deadend-dist-val" class="text-white font-semibold">19.6m / 15m</span>
-            <span id="deadend-dist-badge" class="px-1 rounded font-bold bg-rose-500/25 text-rose-300">FAIL</span>
-          </div>
-        </div>
-      </div>
-    </div></div>
+      <div id="mobile-feasibility-slot"></div>
       <div id="mobile-kpi-slot" class="grid grid-cols-2 gap-2">
         <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-2.5">
           <div class="text-[10px] text-slate-400 truncate">จำนวนห้องพัก (Keys)</div>
@@ -1357,7 +522,7 @@ url:e,reason:"blocked_domain_not_allowlisted"},b.parentOrigin);throw new DOMExce
           <h2 class="text-[11px] font-bold uppercase tracking-wider text-cyan-400">3. โรงแรม</h2>
           <div>
             <label class="block text-[10px] text-slate-400 mb-1">รูปแบบทางเดินห้องพัก</label>
-            <select id="inp-h-corr" class="w-full bg-slate-900/90 border border-slate-700/70 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer">
+            <select id="inp-h-corr" class="w-full bg-slate-900/90 border border-slate-700/70 rounded-lg px-2 py-1.5 text-xs text-white">
               <option value="double" selected="">ทางเดินกลาง 2 ฝั่ง (Double)</option>
               <option value="single">ทางเดินข้างวิวเดียว (Single)</option>
             </select>
@@ -1596,6 +761,1690 @@ url:e,reason:"blocked_domain_not_allowlisted"},b.parentOrigin);throw new DOMExce
     <button data-cam="reset" class="cam-btn px-2 py-1.5 rounded-lg text-[10px] font-semibold bg-slate-800/90 text-cyan-400 cursor-pointer">RST</button>
   </div>
 
-  
+  <script>
+    // =========================================================================
+    // 1. I18N DICTIONARY (BILINGUAL TH / EN)
+    // =========================================================================
+    const I18N = {
+      en: {
+        subtitle: 'Parametric 2D CAD + 3D Feasibility',
+        view2D: '2D CAD',
+        viewSplit: 'Split',
+        view3D: '3D',
+        fitPlan: 'Fit Plan',
+        typHotel: 'Hotel',
+        typResi: 'Residential',
+        typRetail: 'Retail',
+        typOffice: 'Office',
+        modeRendered: '3D Rendered',
+        modeXray: 'X-Ray',
+        exportCsv: 'Export CSV',
+        exportZip: 'GitHub .ZIP',
+        tabParams: 'Parameters',
+        tabMetrics: 'Metrics & Schedule',
+        display3dStyle: '3D Display Mode',
+        paramControls: 'Parametric Controls',
+        secEnvelope: '1. Floor Plate & Grid',
+        floorWidth: 'Floor Width (X)',
+        floorDepth: 'Floor Depth (Z)',
+        coreType: 'Building Core',
+        gridSpan: 'Column Span',
+        secCodeChecks: '2. Code & Facade Checks',
+        mullionSnap: 'Mullion Grid Snap',
+        mullionDesc: 'Snap partitions to glass mullions',
+        mullionModule: 'Mullion Module',
+        sprinklerSys: 'Fire Protection',
+        spaceSchedule: 'Space Program Schedule',
+        orbitHint: 'Left-Drag: Orbit • Right-Drag: Pan • Scroll: Zoom',
+        corridorLayout: 'Corridor Layout',
+        doubleLoaded: 'Double-Loaded Corridor',
+        singleLoaded: 'Single-Loaded (View)',
+        targetKeys: 'Target Guestrooms (Keys)',
+        bayWidth: 'Room Bay Width',
+        roomDepth: 'Room Depth',
+        suiteRatio: '2-Bay Suite Ratio',
+        bohRatio: 'BOH & Kitchen Ratio',
+        targetUnits: 'Target Condo Units',
+        unitDepth: 'Unit Depth',
+        corridorWidth: 'Corridor Width',
+        facilitiesPct: 'Common Facilities %',
+        mixStudio: 'Studio Weight (26m²)',
+        mix1BR: '1-Bedroom Weight (36m²)',
+        mix2BR: '2-BR Corner Weight (62m²)',
+        mix3BR: '3-BR Penthouse (95m²)',
+        anchorPct: 'Anchor Tenant %',
+        shopBayWidth: 'Inline Shop Width',
+        concourseWidth: 'Public Concourse',
+        fnbPct: 'F&B / Café Zone %',
+        officePreset: 'Workplace Preset',
+        presetStartup: 'Tech Startup (Agile)',
+        presetCorp: 'Corporate Enterprise',
+        presetLaw: 'Law / Consulting Firm',
+        headcount: 'Target Headcount',
+        sharingRatio: 'Hybrid Sharing Ratio',
+        deskWidth: 'Workstation Module',
+        meetingRooms: 'Meeting Rooms'
+      },
+      th: {
+        subtitle: 'โปรแกรมจำลองผัง 2D CAD และ 3D',
+        view2D: 'แปลน 2D',
+        viewSplit: 'ดูคู่ 2D+3D',
+        view3D: 'โมเดล 3D',
+        fitPlan: 'จัดกลางจอ',
+        typHotel: 'โรงแรม',
+        typResi: 'คอนโด/พักอาศัย',
+        typRetail: 'ค้าปลีก/มอลล์',
+        typOffice: 'สำนักงาน',
+        modeRendered: '3D เสมือนจริง',
+        modeXray: 'โปร่งแสง X-Ray',
+        exportCsv: 'ส่งออก CSV',
+        exportZip: 'โหลด .ZIP',
+        tabParams: 'พารามิเตอร์',
+        tabMetrics: 'ผลลัพธ์และตารางพื้นที่',
+        display3dStyle: 'รูปแบบแสดงผล 3D',
+        paramControls: 'พารามิเตอร์ปรับแต่งผัง',
+        secEnvelope: '1. ขอบเขตอาคารและเสา',
+        floorWidth: 'ความกว้างอาคาร (X)',
+        floorDepth: 'ความลึกอาคาร (Z)',
+        coreType: 'ตำแหน่งแกนลิฟต์/บันได',
+        gridSpan: 'ระยะช่วงเสา (Span)',
+        secCodeChecks: '2. เช็กกฎหมายและผนังกระจก',
+        mullionSnap: 'ล็อกแนวผนังชนเสากระจก',
+        mullionDesc: 'ปัดความกว้างห้องให้ตรง Mullion',
+        mullionModule: 'ระยะเสากระจก',
+        sprinklerSys: 'ระบบดับเพลิง',
+        spaceSchedule: 'ตารางสรุปพื้นที่ (Schedule)',
+        orbitHint: 'คลิกซ้าย: หมุน • คลิกขวา: เลื่อน • สกรอลล์: ซูม',
+        corridorLayout: 'รูปแบบทางเดินห้องพัก',
+        doubleLoaded: 'ทางเดินกลาง 2 ฝั่ง (Double)',
+        singleLoaded: 'ทางเดินข้างวิวเดียว (Single)',
+        targetKeys: 'จำนวนห้องพักเป้าหมาย (Keys)',
+        bayWidth: 'ความกว้างหน้าห้องพัก',
+        roomDepth: 'ความลึกห้องพัก',
+        suiteRatio: 'สัดส่วนห้องสวีท (2 ช่วงเสา)',
+        bohRatio: 'พื้นที่งานระบบ/ครัว (BOH)',
+        targetUnits: 'จำนวนยูนิตเป้าหมาย',
+        unitDepth: 'ความลึกห้องชุด',
+        corridorWidth: 'ความกว้างโถงทางเดิน',
+        facilitiesPct: 'พื้นที่ส่วนกลาง (Facilities)',
+        mixStudio: 'สัดส่วน Studio (26 ตร.ม.)',
+        mix1BR: 'สัดส่วน 1-Bedroom (36 ตร.ม.)',
+        mix2BR: 'สัดส่วน 2-BR ห้องมุม (62 ตร.ม.)',
+        mix3BR: 'สัดส่วน 3-BR เพนท์เฮาส์ (95 ตร.ม.)',
+        anchorPct: 'สัดส่วนร้านค้าหลัก (Anchor)',
+        shopBayWidth: 'ความกว้างล็อกร้านค้า',
+        concourseWidth: 'ความกว้างโถงทางเดินลูกค้า',
+        fnbPct: 'สัดส่วนโซนอาหาร/คาเฟ่ (F&B)',
+        officePreset: 'รูปแบบองค์กรสำเร็จรูป',
+        presetStartup: 'เทคสตาร์ทอัพ (ยืดหยุ่น)',
+        presetCorp: 'องค์กรขนาดใหญ่ (Corporate)',
+        presetLaw: 'สำนักงานกฎหมาย/ที่ปรึกษา',
+        headcount: 'จำนวนพนักงานทั้งหมด',
+        sharingRatio: 'อัตราส่วนแชร์โต๊ะ (Hybrid)',
+        deskWidth: 'ขนาดโมดูลโต๊ะทำงาน',
+        meetingRooms: 'จำนวนห้องประชุม'
+      }
+    };
+
+    // =========================================================================
+    // 2. APPLICATION STATE (RESPONSIVE DEFAULT VIEWPORT BY DEVICE WIDTH)
+    // =========================================================================
+    const isMobileInit = window.innerWidth < 768;
+    const state = {
+      lang: 'th',
+      viewMode: isMobileInit ? '2d' : 'split', // Mobile defaults to crisp single-pane; Tablet/PC defaults to Split
+      typology: 'hotel', // 'hotel' | 'residential' | 'retail' | 'office'
+      renderMode: 'rendered', // 'rendered' | 'xray'
+      width: 48.0,
+      depth: 30.0,
+      coreType: 'center',
+      gridSpan: 8.4,
+      mullionSnap: true,
+      mullionModule: 1.5,
+      sprinklered: 'yes',
+
+      hotel: {
+        corridorType: 'double',
+        targetKeys: 24,
+        bayWidth: 4.5,
+        roomDepth: 8.0,
+        suiteRatio: 15,
+        bohRatio: 14
+      },
+
+      residential: {
+        targetUnits: 20,
+        unitDepth: 8.5,
+        corridorWidth: 2.0,
+        facilitiesPct: 12,
+        mixStudio: 30,
+        mix1BR: 45,
+        mix2BR: 20,
+        mix3BR: 5
+      },
+
+      retail: {
+        layoutType: 'racetrack',
+        anchorPct: 32,
+        shopBayWidth: 6.0,
+        concourseWidth: 5.5,
+        fnbPct: 18
+      },
+
+      office: {
+        preset: 'startup',
+        headcount: 135,
+        sharingRatio: 0.85,
+        deskWidth: 1.5,
+        meetingRooms: 5
+      }
+    };
+
+    // Helper: Snap width to Curtain Wall Mullion Grid Module
+    function snapDim(val) {
+      if (!state.mullionSnap) return Math.round(val * 10) / 10;
+      const mod = state.mullionModule;
+      return Math.max(mod, Math.round(val / mod) * mod);
+    }
+
+    // =========================================================================
+    // 3. ARCHITECTURAL ZONE PALETTE & SPATIAL PACKING ENGINE + FIRE EGRESS
+    // =========================================================================
+    const ZONE_STYLES = {
+      core:       { hex: '#334155', cadFill: 'rgba(71, 85, 105, 0.55)', cadStroke: '#94A3B8', height: 3.8, badge: 'CORE' },
+      corridor:   { hex: '#1E293B', cadFill: 'rgba(30, 41, 59, 0.45)',  cadStroke: '#475569', height: 0.12, badge: 'CIRC' },
+      guestroom:  { hex: '#0284C7', cadFill: 'rgba(2, 132, 199, 0.25)', cadStroke: '#38BDF8', height: 3.0, badge: 'KEY' },
+      suite:      { hex: '#6366F1', cadFill: 'rgba(99, 102, 241, 0.28)',cadStroke: '#818CF8', height: 3.1, badge: 'SUITE' },
+      boh:        { hex: '#D97706', cadFill: 'rgba(217, 119, 6, 0.25)', cadStroke: '#FBBF24', height: 3.0, badge: 'BOH' },
+      amenity:    { hex: '#10B981', cadFill: 'rgba(16, 185, 129, 0.25)',cadStroke: '#34D399', height: 3.2, badge: 'AMENITY' },
+      studio:     { hex: '#0EA5E9', cadFill: 'rgba(14, 165, 233, 0.25)',cadStroke: '#38BDF8', height: 2.9, badge: 'STUDIO' },
+      oneBr:      { hex: '#3B82F6', cadFill: 'rgba(59, 130, 246, 0.25)',cadStroke: '#60A5FA', height: 2.9, badge: '1-BR' },
+      twoBr:      { hex: '#8B5CF6', cadFill: 'rgba(139, 92, 246, 0.28)',cadStroke: '#A78BFA', height: 3.0, badge: '2-BR' },
+      threeBr:    { hex: '#EC4899', cadFill: 'rgba(236, 72, 153, 0.28)',cadStroke: '#F472B6', height: 3.1, badge: '3-BR' },
+      anchor:     { hex: '#7C3AED', cadFill: 'rgba(124, 58, 237, 0.28)',cadStroke: '#A78BFA', height: 3.6, badge: 'ANCHOR' },
+      shop:       { hex: '#06B6D4', cadFill: 'rgba(6, 182, 212, 0.25)', cadStroke: '#22D3EE', height: 3.4, badge: 'RETAIL' },
+      fnb:        { hex: '#F59E0B', cadFill: 'rgba(245, 158, 11, 0.26)',cadStroke: '#FBBF24', height: 3.4, badge: 'F&B' },
+      workstation:{ hex: '#0284C7', cadFill: 'rgba(2, 132, 199, 0.22)', cadStroke: '#38BDF8', height: 1.25, badge: 'WORK' },
+      meeting:    { hex: '#8B5CF6', cadFill: 'rgba(139, 92, 246, 0.26)',cadStroke: '#A78BFA', height: 2.8, badge: 'MEET' },
+      exec:       { hex: '#6366F1', cadFill: 'rgba(99, 102, 241, 0.26)',cadStroke: '#818CF8', height: 2.8, badge: 'EXEC' },
+      reception:  { hex: '#14B8A6', cadFill: 'rgba(20, 184, 166, 0.25)',cadStroke: '#2DD4BF', height: 2.8, badge: 'FRONT' }
+    };
+
+    function computeSpaceProgram() {
+      const W = state.width;
+      const D = state.depth;
+      const gfa = W * D;
+      const rooms = [];
+      const egressExits = [];
+      const corridorNodes = [];
+
+      const addRoom = (id, nameEn, nameTh, type, x, z, w, d, capacity = 0, furniture = null) => {
+        if (w <= 0.4 || d <= 0.4) return;
+        rooms.push({
+          id,
+          name: state.lang === 'th' ? nameTh : nameEn,
+          nameEn,
+          nameTh,
+          type,
+          x, z, w, d,
+          area: +(w * d).toFixed(1),
+          capacity,
+          furniture,
+          style: ZONE_STYLES[type] || ZONE_STYLES.workstation
+        });
+      };
+
+      const coreW = Math.min(9.0, Math.max(5.4, W * 0.16));
+      const coreD = Math.min(7.5, Math.max(4.8, D * 0.22));
+      const cores = [];
+
+      if (state.coreType === 'center') {
+        cores.push({ x: 0, z: 0, w: coreW, d: coreD });
+        addRoom('core-1', 'Central Core & Fire Stairs', 'แกนลิฟต์และบันไดหนีไฟกลาง', 'core', 0, 0, coreW, coreD, 0);
+        egressExits.push({ x: -coreW / 2, z: 0 }, { x: coreW / 2, z: 0 });
+      } else if (state.coreType === 'side') {
+        const cx = -W / 2 + coreW / 2 + 0.6;
+        cores.push({ x: cx, z: 0, w: coreW, d: coreD });
+        addRoom('core-1', 'Side Core & Fire Stairs', 'แกนลิฟต์และบันไดหนีไฟฝั่งซ้าย', 'core', cx, 0, coreW, coreD, 0);
+        egressExits.push({ x: cx + coreW / 2, z: -coreD * 0.25 }, { x: cx + coreW / 2, z: coreD * 0.25 });
+      } else {
+        const cw = coreW * 0.68;
+        const cxL = -W / 2 + cw / 2 + 0.6;
+        const cxR = W / 2 - cw / 2 - 0.6;
+        cores.push({ x: cxL, z: 0, w: cw, d: coreD }, { x: cxR, z: 0, w: cw, d: coreD });
+        addRoom('core-L', 'West Fire Stair & Core', 'บันไดหนีไฟและลิฟต์ฝั่งตะวันตก', 'core', cxL, 0, cw, coreD, 0);
+        addRoom('core-R', 'East Fire Stair & Core', 'บันไดหนีไฟและลิฟต์ฝั่งตะวันออก', 'core', cxR, 0, cw, coreD, 0);
+        egressExits.push({ x: cxL + cw / 2, z: 0 }, { x: cxR - cw / 2, z: 0 });
+      }
+
+      const overlapsCore = (x, z, w, d) => {
+        return cores.some(c =>
+          Math.abs(x - c.x) < (w + c.w) / 2 - 0.05 &&
+          Math.abs(z - c.z) < (d + c.d) / 2 - 0.05
+        );
+      };
+
+      let kpis = [];
+      let netArea = 0;
+      let targetMet = true;
+      let statusSummary = '';
+
+      if (state.typology === 'hotel') {
+        const h = state.hotel;
+        const corrW = 2.0;
+        const bayW = snapDim(h.bayWidth);
+        const rmD = Math.min(h.roomDepth, (D - corrW) / (h.corridorType === 'double' ? 2 : 1) - 0.4);
+        const corrZ = h.corridorType === 'double' ? 0 : (D / 2 - corrW / 2 - 0.3);
+        addRoom('hotel-corr', 'Guestroom Corridor', 'โถงทางเดินห้องพัก', 'corridor', 0, corrZ, W - 0.6, corrW, 0);
+        corridorNodes.push({ x: -W / 2 + 1.5, z: corrZ }, { x: 0, z: corrZ }, { x: W / 2 - 1.5, z: corrZ });
+
+        const sides = h.corridorType === 'double' ? [-1, 1] : [-1];
+        let keysAchieved = 0;
+        let suitesCount = 0;
+
+        sides.forEach((dir, sIdx) => {
+          const zPos = h.corridorType === 'double' ? dir * (corrW / 2 + rmD / 2) : -D / 2 + rmD / 2 + 0.3;
+          let cursorX = -W / 2 + 0.3;
+          const endX = W / 2 - 0.3;
+
+          if (sIdx === 0) {
+            const bohW = snapDim(Math.max(4.5, (W * (h.bohRatio / 100)) * 0.7));
+            if (!overlapsCore(cursorX + bohW / 2, zPos, bohW, rmD)) {
+              addRoom('hotel-boh', 'BOH / Linen & Service', 'ห้องบริการแม่บ้านและงานระบบ', 'boh', cursorX + bohW / 2, zPos, bohW, rmD, 0);
+              cursorX += bohW;
+            }
+          }
+
+          let rightReserve = 0;
+          if (sIdx === 0) {
+            rightReserve = snapDim(Math.max(6.0, W * 0.16));
+            const rx = endX - rightReserve / 2;
+            if (!overlapsCore(rx, zPos, rightReserve, rmD)) {
+              addRoom('hotel-lobby', 'Sky Lounge & Dining', 'เลานจ์และห้องอาหาร', 'amenity', rx, zPos, rightReserve, rmD, 28);
+            }
+          }
+
+          let idx = 1;
+          while (cursorX + bayW <= endX - rightReserve + 0.05) {
+            const wantSuite = (idx % 5 === 0) && (h.suiteRatio > 0) && (cursorX + bayW * 2 <= endX - rightReserve + 0.05);
+            const curW = wantSuite ? bayW * 2 : bayW;
+            const cx = cursorX + curW / 2;
+            if (!overlapsCore(cx, zPos, curW, rmD)) {
+              if (wantSuite) {
+                addRoom(`suite-${sIdx}-${idx}`, `Executive Suite (${curW.toFixed(1)}m)`, `ห้องสวีท (${curW.toFixed(1)}ม.)`, 'suite', cx, zPos, curW - 0.12, rmD - 0.12, 2);
+                suitesCount++;
+                keysAchieved += 1;
+              } else {
+                addRoom(`key-${sIdx}-${idx}`, `Standard Key (${curW.toFixed(1)}m)`, `ห้องพักมาตรฐาน (${curW.toFixed(1)}ม.)`, 'guestroom', cx, zPos, curW - 0.12, rmD - 0.12, 2);
+                keysAchieved += 1;
+              }
+              idx++;
+            }
+            cursorX += curW;
+          }
+        });
+
+        netArea = rooms.filter(r => ['guestroom', 'suite'].includes(r.type)).reduce((s, r) => s + r.area, 0);
+        const eff = +((netArea / gfa) * 100).toFixed(1);
+        const gfaPerKey = keysAchieved > 0 ? +(gfa / keysAchieved).toFixed(1) : 0;
+        targetMet = keysAchieved >= h.targetKeys;
+
+        kpis = [
+          { label: state.lang === 'th' ? 'จำนวนห้องพัก (Keys)' : 'Keys Achieved', value: `${keysAchieved} / ${h.targetKeys}`, sub: `${suitesCount} Suites`, accent: targetMet ? 'text-emerald-400' : 'text-amber-400' },
+          { label: state.lang === 'th' ? 'พื้นที่ GFA / ห้อง' : 'GFA per Key', value: `${gfaPerKey} m²`, sub: `Net Key Area: ${netArea.toFixed(0)} m²`, accent: 'text-cyan-400' },
+          { label: state.lang === 'th' ? 'ประสิทธิภาพพื้นที่ห้องพัก' : 'Net Key Efficiency', value: `${eff}%`, sub: `GFA: ${gfa.toFixed(0)} m²`, accent: 'text-white' },
+          { label: state.lang === 'th' ? 'ระยะหน้ากว้างห้อง' : 'Snapped Key Width', value: `${bayW.toFixed(2)} m`, sub: state.mullionSnap ? `Mullion ×${Math.round(bayW / state.mullionModule)}` : 'Free Width', accent: 'text-indigo-400' }
+        ];
+        statusSummary = targetMet
+          ? (state.lang === 'th' ? `วางห้องพักได้ ${keysAchieved} ห้อง (ครบตามเป้า ${h.targetKeys} ห้อง)` : `Achieved ${keysAchieved} keys (meets target of ${h.targetKeys} keys).`)
+          : (state.lang === 'th' ? `วางได้ ${keysAchieved} ห้อง (ขาดอีก ${h.targetKeys - keysAchieved} ห้อง — ลองขยายความกว้างอาคาร)` : `Placed ${keysAchieved} keys (${h.targetKeys - keysAchieved} short of target).`);
+      } else if (state.typology === 'residential') {
+        const res = state.residential;
+        const corrW = res.corridorWidth;
+        const uDepth = Math.min(res.unitDepth, (D - corrW) / 2 - 0.4);
+        addRoom('resi-corr', 'Residential Lift Lobby & Corridor', 'โถงลิฟต์และทางเดินพักอาศัย', 'corridor', 0, 0, W - 0.6, corrW, 0);
+        corridorNodes.push({ x: -W / 2 + 1.5, z: 0 }, { x: 0, z: 0 }, { x: W / 2 - 1.5, z: 0 });
+
+        const wStudio = snapDim(Math.max(3.6, 26 / uDepth));
+        const w1BR = snapDim(Math.max(4.5, 36 / uDepth));
+        const w2BR = snapDim(Math.max(7.2, 62 / uDepth));
+        const w3BR = snapDim(Math.max(10.5, 95 / uDepth));
+
+        const totalWeight = Math.max(1, res.mixStudio + res.mix1BR + res.mix2BR + res.mix3BR);
+        const pStudio = res.mixStudio / totalWeight;
+        const p1BR = (res.mixStudio + res.mix1BR) / totalWeight;
+        const p2BR = (res.mixStudio + res.mix1BR + res.mix2BR) / totalWeight;
+
+        let unitsCount = 0;
+        [-1, 1].forEach((dir, sIdx) => {
+          const zPos = dir * (corrW / 2 + uDepth / 2);
+          let cursorX = -W / 2 + 0.3;
+          let endX = W / 2 - 0.3;
+
+          if (sIdx === 0 && res.facilitiesPct > 0) {
+            const facW = snapDim(Math.max(4.5, W * (res.facilitiesPct / 100) * 0.9));
+            if (!overlapsCore(cursorX + facW / 2, zPos, facW, uDepth)) {
+              addRoom('resi-fac', 'Co-Working & Sky Fitness', 'พื้นที่ส่วนกลางและฟิตเนส', 'amenity', cursorX + facW / 2, zPos, facW, uDepth, 20);
+              cursorX += facW;
+            }
+          }
+
+          if (res.mix3BR > 0 && endX - w3BR > cursorX + 4 && !overlapsCore(endX - w3BR / 2, zPos, w3BR, uDepth)) {
+            addRoom(`resi-3br-${sIdx}`, `3-BR Corner Penthouse`, `ห้องชุด 3 ห้องนอน (ห้องมุม)`, 'threeBr', endX - w3BR / 2, zPos, w3BR - 0.12, uDepth - 0.12, 5);
+            endX -= w3BR;
+            unitsCount++;
+          } else if (res.mix2BR > 0 && endX - w2BR > cursorX + 4 && !overlapsCore(endX - w2BR / 2, zPos, w2BR, uDepth)) {
+            addRoom(`resi-2br-end-${sIdx}`, `2-Bedroom Corner`, `ห้องชุด 2 ห้องนอน (ห้องมุม)`, 'twoBr', endX - w2BR / 2, zPos, w2BR - 0.12, uDepth - 0.12, 4);
+            endX -= w2BR;
+            unitsCount++;
+          }
+
+          let step = 0;
+          while (cursorX + wStudio <= endX + 0.05) {
+            const r = ((step * 37) % 100) / 100;
+            let uType = 'oneBr', uNameEn = '1-Bedroom Unit', uNameTh = 'ห้องชุด 1 ห้องนอน', uw = w1BR, cap = 2;
+            if (r < pStudio) { uType = 'studio'; uNameEn = 'Studio Unit'; uNameTh = 'ห้องชุดสตูดิโอ'; uw = wStudio; cap = 1; }
+            else if (r < p1BR) { uType = 'oneBr'; uNameEn = '1-Bedroom Unit'; uNameTh = 'ห้องชุด 1 ห้องนอน'; uw = w1BR; cap = 2; }
+            else if (r < p2BR) { uType = 'twoBr'; uNameEn = '2-Bedroom Unit'; uNameTh = 'ห้องชุด 2 ห้องนอน'; uw = w2BR; cap = 4; }
+            else { uType = 'threeBr'; uNameEn = '3-Bedroom Unit'; uNameTh = 'ห้องชุด 3 ห้องนอน'; uw = w3BR; cap = 5; }
+
+            if (cursorX + uw > endX + 0.05) {
+              if (cursorX + wStudio <= endX + 0.05) { uType = 'studio'; uNameEn = 'Studio Unit'; uNameTh = 'ห้องชุดสตูดิโอ'; uw = wStudio; cap = 1; }
+              else break;
+            }
+
+            const cx = cursorX + uw / 2;
+            if (!overlapsCore(cx, zPos, uw, uDepth)) {
+              addRoom(`unit-${sIdx}-${step}`, uNameEn, uNameTh, uType, cx, zPos, uw - 0.12, uDepth - 0.12, cap);
+              unitsCount++;
+            }
+            cursorX += uw;
+            step++;
+          }
+        });
+
+        netArea = rooms.filter(r => ['studio', 'oneBr', 'twoBr', 'threeBr'].includes(r.type)).reduce((s, r) => s + r.area, 0);
+        const eff = +((netArea / gfa) * 100).toFixed(1);
+        const avgUnit = unitsCount > 0 ? +(netArea / unitsCount).toFixed(1) : 0;
+        targetMet = unitsCount >= res.targetUnits;
+
+        kpis = [
+          { label: state.lang === 'th' ? 'จำนวนยูนิตขายได้' : 'Saleable Units', value: `${unitsCount} / ${res.targetUnits}`, sub: `Avg: ${avgUnit} m²/unit`, accent: targetMet ? 'text-emerald-400' : 'text-amber-400' },
+          { label: state.lang === 'th' ? 'พื้นที่ขายสุทธิ (NSA)' : 'Net Saleable (NSA)', value: `${netArea.toFixed(0)} m²`, sub: `GFA: ${gfa.toFixed(0)} m²`, accent: 'text-cyan-400' },
+          { label: state.lang === 'th' ? 'ประสิทธิภาพพื้นที่ขาย' : 'Saleable Efficiency', value: `${eff}%`, sub: `Target ≥ 75%`, accent: eff >= 75 ? 'text-emerald-400' : 'text-amber-400' },
+          { label: state.lang === 'th' ? 'ความลึกห้องชุด' : 'Unit Depth', value: `${uDepth.toFixed(1)} m`, sub: `Corridor: ${corrW.toFixed(1)} m`, accent: 'text-indigo-400' }
+        ];
+        statusSummary = targetMet
+          ? (state.lang === 'th' ? `จัดวางได้ ${unitsCount} ยูนิต (ครบตามเป้าหมาย ${res.targetUnits} ยูนิต)` : `Achieved ${unitsCount} units (meets target of ${res.targetUnits}).`)
+          : (state.lang === 'th' ? `จัดวางได้ ${unitsCount} ยูนิต (ต่ำกว่าเป้า ${res.targetUnits - unitsCount} ยูนิต)` : `Placed ${unitsCount} units (${res.targetUnits - unitsCount} short of target).`);
+      } else if (state.typology === 'retail') {
+        const ret = state.retail;
+        const concW = ret.concourseWidth;
+        const bayW = snapDim(ret.shopBayWidth);
+        const bohD = 2.6;
+        addRoom('ret-boh', 'BOH Service & Loading Corridor', 'ทางเดินขนส่งสินค้าหลังร้าน (BOH)', 'boh', 0, -D / 2 + bohD / 2 + 0.2, W - 0.6, bohD, 0);
+
+        const usableD = D - bohD - 0.4;
+        const shopD = Math.max(5.5, (usableD - concW) / 2);
+        const concZ = -D / 2 + bohD + 0.2 + shopD + concW / 2;
+        addRoom('ret-conc', 'Public Retail Concourse', 'โถงทางเดินลูกค้าหลัก', 'corridor', 0, concZ, W - 0.6, concW, 0);
+        corridorNodes.push({ x: -W / 2 + 1.5, z: concZ }, { x: 0, z: concZ }, { x: W / 2 - 1.5, z: concZ });
+
+        const anchorW = snapDim(Math.max(8.0, W * (ret.anchorPct / 100)));
+        if (ret.anchorPct > 5) {
+          addRoom('ret-anchor', 'Anchor Department Store', 'ร้านค้าหลักขนาดใหญ่ (Anchor)', 'anchor', -W / 2 + anchorW / 2 + 0.3, 0.8, anchorW, usableD - 0.4, 180);
+        }
+
+        const startX = -W / 2 + (ret.anchorPct > 5 ? anchorW + 0.3 : 0.3);
+        const endX = W / 2 - 0.3;
+        let shopCount = 0;
+
+        [-1, 1].forEach((dir, sIdx) => {
+          const zPos = concZ + dir * (concW / 2 + shopD / 2);
+          let cursorX = startX;
+          let idx = 1;
+          while (cursorX + bayW <= endX + 0.05) {
+            const isFnb = (sIdx === 1) && (idx % 3 === 0) && (ret.fnbPct > 0);
+            const cx = cursorX + bayW / 2;
+            if (!overlapsCore(cx, zPos, bayW, shopD)) {
+              if (isFnb) addRoom(`fnb-${sIdx}-${idx}`, `F&B / Café Terrace`, `ร้านอาหารและคาเฟ่`, 'fnb', cx, zPos, bayW - 0.14, shopD - 0.14, 32);
+              else addRoom(`shop-${sIdx}-${idx}`, `Inline Retail Bay #${shopCount + 1}`, `ล็อกร้านค้าย่อย #${shopCount + 1}`, 'shop', cx, zPos, bayW - 0.14, shopD - 0.14, 15);
+              shopCount++;
+              idx++;
+            }
+            cursorX += bayW;
+          }
+        });
+
+        netArea = rooms.filter(r => ['anchor', 'shop', 'fnb'].includes(r.type)).reduce((s, r) => s + r.area, 0);
+        const eff = +((netArea / gfa) * 100).toFixed(1);
+        targetMet = eff >= 62;
+
+        kpis = [
+          { label: state.lang === 'th' ? 'พื้นที่เช่าสุทธิ (NLA)' : 'Net Leasable (NLA)', value: `${netArea.toFixed(0)} m²`, sub: `GFA: ${gfa.toFixed(0)} m²`, accent: 'text-cyan-400' },
+          { label: state.lang === 'th' ? 'ประสิทธิภาพพื้นที่เช่า' : 'Leasable Efficiency', value: `${eff}%`, sub: `Target ≥ 65%`, accent: targetMet ? 'text-emerald-400' : 'text-amber-400' },
+          { label: state.lang === 'th' ? 'จำนวนล็อกร้านค้า' : 'Inline Shop Bays', value: `${shopCount} Bays`, sub: `Bay: ${bayW.toFixed(1)} × ${shopD.toFixed(1)}m`, accent: 'text-white' },
+          { label: state.lang === 'th' ? 'ความกว้างทางเดินลูกค้า' : 'Concourse Width', value: `${concW.toFixed(1)} m`, sub: `BOH Service: ${bohD}m`, accent: 'text-amber-400' }
+        ];
+        statusSummary = state.lang === 'th'
+          ? `พื้นที่เช่าสุทธิ ${netArea.toFixed(0)} ตร.ม. (${eff}%) แบ่งได้ ${shopCount} ร้านค้าย่อย`
+          : `Generated ${netArea.toFixed(0)} m² NLA (${eff}%) across ${shopCount} retail units.`;
+      } else if (state.typology === 'office') {
+        const off = state.office;
+        const targetDesks = Math.ceil(off.headcount * off.sharingRatio);
+        const corrW = 1.8;
+        addRoom('off-corr', 'Primary Circulation Spine', 'ทางสัญจรหลักสำนักงาน', 'corridor', 0, 0, W - 0.6, corrW, 0);
+        corridorNodes.push({ x: -W / 2 + 1.5, z: 0 }, { x: 0, z: 0 }, { x: W / 2 - 1.5, z: 0 });
+
+        const zoneD = (D - corrW) / 2 - 0.3;
+        const northZ = -corrW / 2 - zoneD / 2;
+        let nCursor = -W / 2 + 0.3;
+
+        const recW = snapDim(5.4);
+        addRoom('off-rec', 'Reception & Client Lounge', 'โถงต้อนรับและรับรองลูกค้า', 'reception', nCursor + recW / 2, northZ, recW - 0.12, zoneD - 0.12, 12);
+        nCursor += recW;
+
+        const pantryW = snapDim(6.0);
+        addRoom('off-pantry', 'Work Café & Pantry', 'โซนพักผ่อนและแพนทรี', 'amenity', nCursor + pantryW / 2, northZ, pantryW - 0.12, zoneD - 0.12, 24);
+        nCursor += pantryW;
+
+        const mtgW = snapDim(4.5);
+        for (let m = 0; m < off.meetingRooms; m++) {
+          if (nCursor + mtgW <= W / 2 - 0.3) {
+            const cx = nCursor + mtgW / 2;
+            if (!overlapsCore(cx, northZ, mtgW, zoneD)) {
+              addRoom(`off-mtg-${m}`, `Meeting Room #${m + 1}`, `ห้องประชุม #${m + 1}`, 'meeting', cx, northZ, mtgW - 0.12, zoneD - 0.12, 8);
+            }
+            nCursor += mtgW;
+          }
+        }
+
+        const execW = snapDim(3.6);
+        let exIdx = 1;
+        while (nCursor + execW <= W / 2 - 0.3) {
+          const cx = nCursor + execW / 2;
+          if (!overlapsCore(cx, northZ, execW, zoneD)) {
+            addRoom(`off-exec-${exIdx}`, `Private Focus / Exec #${exIdx}`, `ห้องผู้บริหาร / Focus #${exIdx}`, 'exec', cx, northZ, execW - 0.12, zoneD - 0.12, 2);
+            exIdx++;
+          }
+          nCursor += execW;
+        }
+
+        const clusterW = snapDim(off.deskWidth * 4);
+        const clusterD = 3.2;
+        const aisleGap = 1.6;
+        let desksPlaced = 0;
+        let clusterIdx = 1;
+
+        for (let zc = corrW / 2 + clusterD / 2 + 0.5; zc + clusterD / 2 <= D / 2 - 0.4; zc += clusterD + aisleGap) {
+          for (let xc = -W / 2 + clusterW / 2 + 0.6; xc + clusterW / 2 <= W / 2 - 0.6; xc += clusterW + 1.5) {
+            if (desksPlaced >= targetDesks) break;
+            if (!overlapsCore(xc, zc, clusterW, clusterD)) {
+              const seatsInPod = Math.min(8, targetDesks - desksPlaced);
+              addRoom(`ws-${clusterIdx}`, `Workstation Pod #${clusterIdx} (${seatsInPod}p)`, `กลุ่มโต๊ะทำงาน #${clusterIdx} (${seatsInPod} ที่นั่ง)`, 'workstation', xc, zc, clusterW, clusterD, seatsInPod);
+              desksPlaced += seatsInPod;
+              clusterIdx++;
+            }
+          }
+        }
+
+        netArea = rooms.filter(r => r.type !== 'core' && r.type !== 'corridor').reduce((s, r) => s + r.area, 0);
+        const eff = +((netArea / gfa) * 100).toFixed(1);
+        const density = off.headcount > 0 ? +(gfa / off.headcount).toFixed(1) : 0;
+        targetMet = desksPlaced >= targetDesks;
+
+        kpis = [
+          { label: state.lang === 'th' ? 'โต๊ะทำงานที่จัดวางได้' : 'Workstations Placed', value: `${desksPlaced} / ${targetDesks}`, sub: `Headcount: ${off.headcount}`, accent: targetMet ? 'text-emerald-400' : 'text-amber-400' },
+          { label: state.lang === 'th' ? 'ความหนาแน่น (ตร.ม./คน)' : 'Area Density', value: `${density} m²/p`, sub: `GFA: ${gfa.toFixed(0)} m²`, accent: 'text-cyan-400' },
+          { label: state.lang === 'th' ? 'ประสิทธิภาพใช้สอย' : 'Space Efficiency', value: `${eff}%`, sub: `Net Usable: ${netArea.toFixed(0)} m²`, accent: 'text-white' },
+          { label: state.lang === 'th' ? 'ห้องประชุม & ห้องส่วนตัว' : 'Enclosed Rooms', value: `${off.meetingRooms + (exIdx - 1)} Rms`, sub: `${off.meetingRooms} Mtg + ${exIdx - 1} Exec`, accent: 'text-purple-400' }
+        ];
+        statusSummary = targetMet
+          ? (state.lang === 'th' ? `วางโต๊ะทำงานได้ครบ ${desksPlaced} ที่นั่ง (รองรับพนักงาน ${off.headcount} คน)` : `Fitted all ${desksPlaced} desks for ${off.headcount} staff.`)
+          : (state.lang === 'th' ? `วางโต๊ะได้ ${desksPlaced}/${targetDesks} ที่นั่ง (พื้นที่ไม่พอ ขาด ${targetDesks - desksPlaced} ที่นั่ง)` : `Fitted ${desksPlaced}/${targetDesks} desks (${targetDesks - desksPlaced} short).`);
+      }
+
+      // Fire Egress & Dead-End Corridor Verification
+      const maxEgressLimit = state.sprinklered === 'yes' ? 60.0 : 45.0;
+      const maxDeadEndLimit = 15.0;
+      let maxPathPoints = [];
+      let maxTravelDist = 0;
+
+      const occupiedRooms = rooms.filter(r => r.type !== 'core' && r.type !== 'corridor');
+      const spineZ = corridorNodes.length > 0 ? corridorNodes[0].z : 0;
+
+      occupiedRooms.forEach(r => {
+        const corners = [
+          { x: r.x - r.w / 2, z: r.z - r.d / 2 },
+          { x: r.x + r.w / 2, z: r.z - r.d / 2 },
+          { x: r.x - r.w / 2, z: r.z + r.d / 2 },
+          { x: r.x + r.w / 2, z: r.z + r.d / 2 }
+        ];
+        corners.forEach(pt => {
+          const doorPt = { x: r.x, z: spineZ };
+          const inRoomDist = Math.abs(pt.x - doorPt.x) + Math.abs(pt.z - doorPt.z);
+          let bestExitDist = Infinity;
+          let bestExit = egressExits[0] || { x: 0, z: 0 };
+          egressExits.forEach(ex => {
+            const dCorr = Math.abs(doorPt.x - ex.x) + Math.abs(doorPt.z - ex.z);
+            if (dCorr < bestExitDist) {
+              bestExitDist = dCorr;
+              bestExit = ex;
+            }
+          });
+          const totalDist = inRoomDist + bestExitDist;
+          if (totalDist > maxTravelDist) {
+            maxTravelDist = totalDist;
+            maxPathPoints = [pt, { x: doorPt.x, z: pt.z }, doorPt, { x: bestExit.x, z: spineZ }, bestExit];
+          }
+        });
+      });
+
+      let deadEndDist = 0;
+      [{ x: -W / 2 + 0.6, z: spineZ }, { x: W / 2 - 0.6, z: spineZ }].forEach(ce => {
+        let minD = Infinity;
+        egressExits.forEach(ex => {
+          const d = Math.abs(ce.x - ex.x) + Math.abs(ce.z - ex.z);
+          if (d < minD) minD = d;
+        });
+        if (minD > deadEndDist) deadEndDist = minD;
+      });
+
+      maxTravelDist = +maxTravelDist.toFixed(1);
+      deadEndDist = +deadEndDist.toFixed(1);
+      const egressPass = maxTravelDist <= maxEgressLimit;
+      const deadEndPass = deadEndDist <= maxDeadEndLimit;
+
+      return {
+        W, D, gfa, netArea,
+        efficiency: +((netArea / gfa) * 100).toFixed(1),
+        rooms, cores, egressExits, maxPathPoints,
+        maxTravelDist, maxEgressLimit, egressPass,
+        deadEndDist, deadEndLimit: maxDeadEndLimit, deadEndPass,
+        targetMet: targetMet && egressPass && deadEndPass,
+        statusSummary, kpis
+      };
+    }
+
+    // =========================================================================
+    // 4. HIGH-DPI 2D ARCHITECTURAL CAD RENDERER
+    // =========================================================================
+    const cadCanvas = document.getElementById('cad-canvas');
+    const cadCtx = cadCanvas.getContext('2d');
+    const cadCam = { x: 0, y: 0, zoom: 13.5, dragging: false, lastX: 0, lastY: 0, pinchDist: 0 };
+    let currentPlanData = null;
+
+    function fitCadView() {
+      const rect = cadCanvas.parentElement.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return;
+      const isDesktop = window.innerWidth >= 1024;
+      const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+      const padX = isDesktop ? 350 : isTablet ? 330 : 70;
+      const availW = Math.max(180, rect.width - padX);
+      const availH = Math.max(180, rect.height - 140);
+      cadCam.zoom = Math.min(availW / (state.width + 12), availH / (state.depth + 12));
+      cadCam.x = (isDesktop || isTablet) ? 140 : 0;
+      cadCam.y = 10;
+    }
+
+    function drawDimensionLine(ctx, x1, y1, x2, y2, offset, labelText, color = '#38BDF8') {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) return;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const ox1 = x1 + nx * offset;
+      const oy1 = y1 + ny * offset;
+      const ox2 = x2 + nx * offset;
+      const oy2 = y2 + ny * offset;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1 + nx * 4, y1 + ny * 4);
+      ctx.lineTo(ox1 + nx * 4, oy1 + ny * 4);
+      ctx.moveTo(x2 + nx * 4, y2 + ny * 4);
+      ctx.lineTo(ox2 + nx * 4, oy2 + ny * 4);
+      ctx.moveTo(ox1, oy1);
+      ctx.lineTo(ox2, oy2);
+      ctx.stroke();
+
+      const tick = 4;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(ox1 - tick, oy1 - tick);
+      ctx.lineTo(ox1 + tick, oy1 + tick);
+      ctx.moveTo(ox2 - tick, oy2 - tick);
+      ctx.lineTo(ox2 + tick, oy2 + tick);
+      ctx.stroke();
+
+      const mx = (ox1 + ox2) / 2;
+      const my = (oy1 + oy2) / 2;
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(labelText).width + 8;
+      ctx.fillStyle = '#090D16';
+      ctx.fillRect(mx - tw / 2, my - 7, tw, 14);
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(labelText, mx, my);
+      ctx.restore();
+    }
+
+    function render2DCad(plan) {
+      if (!plan) return;
+      const parent = cadCanvas.parentElement;
+      const rect = parent.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cadCanvas.width = rect.width * dpr;
+      cadCanvas.height = rect.height * dpr;
+
+      const ctx = cadCtx;
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      const cx = rect.width / 2 + cadCam.x;
+      const cy = rect.height / 2 + cadCam.y;
+      const z = cadCam.zoom;
+
+      const toScreenX = (wx) => cx + wx * z;
+      const toScreenY = (wz) => cy + wz * z;
+
+      const W = plan.W;
+      const D = plan.D;
+      const left = toScreenX(-W / 2);
+      const right = toScreenX(W / 2);
+      const top = toScreenY(-D / 2);
+      const bottom = toScreenY(D / 2);
+      const pw = W * z;
+      const ph = D * z;
+
+      const span = state.gridSpan;
+      const colsX = Math.floor(W / span);
+      const colsZ = Math.floor(D / span);
+      const startGX = -((colsX * span) / 2);
+      const startGZ = -((colsZ * span) / 2);
+
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i <= colsX; i++) {
+        const sx = toScreenX(startGX + i * span);
+        ctx.beginPath();
+        ctx.moveTo(sx, top - 28);
+        ctx.lineTo(sx, bottom + 14);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#0F172A';
+        ctx.strokeStyle = '#64748B';
+        ctx.beginPath();
+        ctx.arc(sx, top - 36, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#CBD5E1';
+        ctx.font = '600 9px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String.fromCharCode(65 + (i % 26)), sx, top - 36);
+        ctx.restore();
+      }
+
+      for (let j = 0; j <= colsZ; j++) {
+        const sy = toScreenY(startGZ + j * span);
+        ctx.beginPath();
+        ctx.moveTo(left - 28, sy);
+        ctx.lineTo(right + 14, sy);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#0F172A';
+        ctx.strokeStyle = '#64748B';
+        ctx.beginPath();
+        ctx.arc(left - 36, sy, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#CBD5E1';
+        ctx.font = '600 9px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${j + 1}`, left - 36, sy);
+        ctx.restore();
+      }
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.fillRect(left, top, pw, ph);
+
+      const mod = state.mullionModule;
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.55)';
+      ctx.lineWidth = 1;
+      for (let mx = -W / 2; mx <= W / 2 + 0.01; mx += mod) {
+        const sx = toScreenX(mx);
+        ctx.beginPath();
+        ctx.moveTo(sx, top - 3);
+        ctx.lineTo(sx, top + 3);
+        ctx.moveTo(sx, bottom - 3);
+        ctx.lineTo(sx, bottom + 3);
+        ctx.stroke();
+      }
+
+      plan.rooms.forEach(r => {
+        const rx = toScreenX(r.x - r.w / 2);
+        const ry = toScreenY(r.z - r.d / 2);
+        const rw = r.w * z;
+        const rd = r.d * z;
+
+        ctx.fillStyle = r.style.cadFill;
+        ctx.strokeStyle = r.style.cadStroke;
+        ctx.lineWidth = r.type === 'core' ? 1.8 : 1.1;
+        ctx.fillRect(rx, ry, rw, rd);
+        ctx.strokeRect(rx, ry, rw, rd);
+
+        if (r.type === 'core') {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(rx + rw, ry + rd);
+          ctx.moveTo(rx + rw, ry);
+          ctx.lineTo(rx, ry + rd);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (rw > 24 && rd > 16) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(rx + 2, ry + 2, rw - 4, rd - 4);
+          ctx.clip();
+
+          const rcx = rx + rw / 2;
+          const rcy = ry + rd / 2;
+          ctx.fillStyle = '#F8FAFC';
+          ctx.font = `600 ${rw > 65 ? 10 : 8.5}px "Inter", "IBM Plex Sans Thai", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          const shortTitle = r.name.length > 22 ? r.name.slice(0, 20) + '…' : r.name;
+          if (rd > 34 && rw > 42) {
+            ctx.fillText(shortTitle, rcx, rcy - 7);
+            ctx.fillStyle = '#38BDF8';
+            ctx.font = '600 9px "JetBrains Mono", monospace';
+            ctx.fillText(`${r.area.toFixed(1)} m²`, rcx, rcy + 5);
+            if (rd > 50 && rw > 62) {
+              ctx.fillStyle = '#94A3B8';
+              ctx.font = '400 8px "JetBrains Mono", monospace';
+              ctx.fillText(`${r.w.toFixed(1)}×${r.d.toFixed(1)}m`, rcx, rcy + 16);
+            }
+          } else {
+            ctx.fillStyle = '#38BDF8';
+            ctx.font = '600 8.5px "JetBrains Mono", monospace';
+            ctx.fillText(`${r.area.toFixed(0)}m²`, rcx, rcy);
+          }
+          ctx.restore();
+        }
+      });
+
+      ctx.fillStyle = '#F8FAFC';
+      for (let i = 0; i <= colsX; i++) {
+        for (let j = 0; j <= colsZ; j++) {
+          const sx = toScreenX(startGX + i * span);
+          const sy = toScreenY(startGZ + j * span);
+          ctx.fillRect(sx - 3, sy - 3, 6, 6);
+        }
+      }
+
+      ctx.strokeStyle = '#38BDF8';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(left, top, pw, ph);
+
+      plan.egressExits.forEach(ex => {
+        const sx = toScreenX(ex.x);
+        const sy = toScreenY(ex.z);
+        ctx.save();
+        ctx.fillStyle = '#10B981';
+        ctx.strokeStyle = '#064E3B';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      if (plan.maxPathPoints.length > 1) {
+        const pathColor = plan.egressPass ? '#F59E0B' : '#F43F5E';
+        ctx.save();
+        ctx.strokeStyle = pathColor;
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        plan.maxPathPoints.forEach((pt, i) => {
+          const sx = toScreenX(pt.x);
+          const sy = toScreenY(pt.z);
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const p0 = plan.maxPathPoints[0];
+        ctx.fillStyle = pathColor;
+        ctx.beginPath();
+        ctx.arc(toScreenX(p0.x), toScreenY(p0.z), 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        const midPt = plan.maxPathPoints[Math.floor(plan.maxPathPoints.length / 2)];
+        const tag = `Egress: ${plan.maxTravelDist}m / ${plan.maxEgressLimit}m`;
+        ctx.font = '700 9.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(tag).width + 10;
+        const tx = toScreenX(midPt.x);
+        const ty = toScreenY(midPt.z) - 12;
+        ctx.fillStyle = plan.egressPass ? 'rgba(120, 53, 15, 0.92)' : 'rgba(136, 19, 55, 0.95)';
+        ctx.strokeStyle = pathColor;
+        ctx.lineWidth = 1;
+        ctx.fillRect(tx - tw / 2, ty - 8, tw, 16);
+        ctx.strokeRect(tx - tw / 2, ty - 8, tw, 16);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tag, tx, ty);
+        ctx.restore();
+      }
+
+      drawDimensionLine(ctx, left, bottom, right, bottom, 24, `${W.toFixed(1)} m (TOTAL WIDTH)`, '#38BDF8');
+      drawDimensionLine(ctx, right, top, right, bottom, 24, `${D.toFixed(1)} m (DEPTH)`, '#38BDF8');
+
+      if (colsX >= 1) {
+        const bx1 = toScreenX(startGX);
+        const bx2 = toScreenX(startGX + span);
+        drawDimensionLine(ctx, bx1, bottom, bx2, bottom, 44, `BAY ${span.toFixed(1)}m`, '#94A3B8');
+      }
+      ctx.restore();
+    }
+
+    // 2D CAD Mouse + Touch Pan & Pinch-to-Zoom
+    cadCanvas.addEventListener('pointerdown', (e) => {
+      cadCam.dragging = true;
+      cadCam.lastX = e.clientX;
+      cadCam.lastY = e.clientY;
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!cadCam.dragging) return;
+      cadCam.x += e.clientX - cadCam.lastX;
+      cadCam.y += e.clientY - cadCam.lastY;
+      cadCam.lastX = e.clientX;
+      cadCam.lastY = e.clientY;
+      render2DCad(currentPlanData);
+    });
+    window.addEventListener('pointerup', () => {
+      cadCam.dragging = false;
+    });
+    cadCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      cadCam.zoom = Math.min(45, Math.max(4, cadCam.zoom * factor));
+      render2DCad(currentPlanData);
+    }, { passive: false });
+
+    cadCanvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        cadCam.dragging = false;
+        cadCam.pinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    }, { passive: true });
+    cadCanvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && cadCam.pinchDist > 0) {
+        e.preventDefault();
+        const newDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        cadCam.zoom = Math.min(45, Math.max(4, cadCam.zoom * (newDist / cadCam.pinchDist)));
+        cadCam.pinchDist = newDist;
+        render2DCad(currentPlanData);
+      }
+    }, { passive: false });
+
+    document.getElementById('cad-zoom-in').addEventListener('click', () => {
+      cadCam.zoom = Math.min(45, cadCam.zoom * 1.2);
+      render2DCad(currentPlanData);
+    });
+    document.getElementById('cad-zoom-out').addEventListener('click', () => {
+      cadCam.zoom = Math.max(4, cadCam.zoom * 0.82);
+      render2DCad(currentPlanData);
+    });
+    document.getElementById('cad-reset').addEventListener('click', () => {
+      fitCadView();
+      render2DCad(currentPlanData);
+    });
+
+    // =========================================================================
+    // 5. THREE.JS 3D STUDIO ENGINE (UMD r128 COMPATIBLE)
+    // =========================================================================
+    const webglContainer = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#0B0F17');
+    scene.fog = new THREE.FogExp2('#0B0F17', 0.0042);
+
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.5, 500);
+    camera.position.set(42, 46, 52);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    webglContainer.appendChild(renderer.domElement);
+
+    const hemiLight = new THREE.HemisphereLight('#E0F2FE', '#0F172A', 0.85);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight('#FFFFFF', 1.5);
+    dirLight.position.set(45, 75, 40);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(2048, 2048);
+    dirLight.shadow.camera.near = 10;
+    dirLight.shadow.camera.far = 200;
+    const dCam = 55;
+    dirLight.shadow.camera.left = -dCam;
+    dirLight.shadow.camera.right = dCam;
+    dirLight.shadow.camera.top = dCam;
+    dirLight.shadow.camera.bottom = -dCam;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const fillLight = new THREE.DirectionalLight('#38BDF8', 0.45);
+    fillLight.position.set(-40, 30, -35);
+    scene.add(fillLight);
+
+    const groundGrid = new THREE.GridHelper(220, 44, 0x1E293B, 0x111827);
+    groundGrid.position.y = -0.05;
+    scene.add(groundGrid);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 - 0.03;
+    controls.minDistance = 12;
+    controls.maxDistance = 160;
+
+    const buildingGroup = new THREE.Group();
+    scene.add(buildingGroup);
+    let interactiveMeshes = [];
+
+    function disposeGroup(group) {
+      while (group.children.length > 0) {
+        const child = group.children[0];
+        group.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+          else child.material.dispose();
+        }
+      }
+      interactiveMeshes = [];
+    }
+
+    function rebuild3DScene(plan) {
+      if (!plan) return;
+      disposeGroup(buildingGroup);
+      const isXray = state.renderMode === 'xray';
+
+      const slabGeo = new THREE.BoxGeometry(plan.W + 0.6, 0.35, plan.D + 0.6);
+      const slabMat = new THREE.MeshStandardMaterial({ color: '#1E293B', roughness: 0.75, metalness: 0.15 });
+      const slab = new THREE.Mesh(slabGeo, slabMat);
+      slab.position.y = -0.175;
+      slab.receiveShadow = true;
+      buildingGroup.add(slab);
+
+      const span = state.gridSpan;
+      const colsX = Math.floor(plan.W / span);
+      const colsZ = Math.floor(plan.D / span);
+      const startGX = -((colsX * span) / 2);
+      const startGZ = -((colsZ * span) / 2);
+      const colGeo = new THREE.BoxGeometry(0.55, 3.8, 0.55);
+      const colMat = new THREE.MeshStandardMaterial({ color: '#CBD5E1', roughness: 0.4, metalness: 0.3 });
+
+      for (let i = 0; i <= colsX; i++) {
+        for (let j = 0; j <= colsZ; j++) {
+          const col = new THREE.Mesh(colGeo, colMat);
+          col.position.set(startGX + i * span, 1.9, startGZ + j * span);
+          col.castShadow = true;
+          buildingGroup.add(col);
+        }
+      }
+
+      plan.rooms.forEach(r => {
+        const h = r.style.height;
+        const geo = new THREE.BoxGeometry(r.w, h, r.d);
+        const mat = new THREE.MeshStandardMaterial({
+          color: r.style.hex,
+          roughness: 0.42,
+          metalness: 0.12,
+          transparent: true,
+          opacity: isXray ? 0.28 : (r.type === 'corridor' ? 0.85 : 0.88)
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(r.x, h / 2, r.z);
+        mesh.castShadow = !isXray && r.type !== 'corridor';
+        mesh.receiveShadow = true;
+        mesh.userData = { room: r };
+        buildingGroup.add(mesh);
+        interactiveMeshes.push(mesh);
+
+        const edges = new THREE.EdgesGeometry(geo);
+        const line = new THREE.LineSegments(
+          edges,
+          new THREE.LineBasicMaterial({ color: r.style.cadStroke, transparent: true, opacity: 0.65 })
+        );
+        line.position.copy(mesh.position);
+        buildingGroup.add(line);
+      });
+
+      const glassH = 3.8;
+      const glassMat = new THREE.MeshStandardMaterial({
+        color: '#38BDF8',
+        roughness: 0.1,
+        metalness: 0.8,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      const cwNorth = new THREE.Mesh(new THREE.PlaneGeometry(plan.W, glassH), glassMat);
+      cwNorth.position.set(0, glassH / 2, -plan.D / 2);
+      buildingGroup.add(cwNorth);
+
+      const cwSouth = new THREE.Mesh(new THREE.PlaneGeometry(plan.W, glassH), glassMat);
+      cwSouth.position.set(0, glassH / 2, plan.D / 2);
+      buildingGroup.add(cwSouth);
+
+      const mod = state.mullionModule;
+      const mulGeo = new THREE.BoxGeometry(0.08, glassH, 0.14);
+      const mulMat = new THREE.MeshStandardMaterial({ color: '#64748B', metalness: 0.7, roughness: 0.3 });
+      for (let mx = -plan.W / 2; mx <= plan.W / 2 + 0.01; mx += mod) {
+        const mN = new THREE.Mesh(mulGeo, mulMat);
+        mN.position.set(mx, glassH / 2, -plan.D / 2);
+        buildingGroup.add(mN);
+
+        const mS = new THREE.Mesh(mulGeo, mulMat);
+        mS.position.set(mx, glassH / 2, plan.D / 2);
+        buildingGroup.add(mS);
+      }
+
+      if (plan.maxPathPoints.length > 1) {
+        const pts3D = plan.maxPathPoints.map(p => new THREE.Vector3(p.x, 0.25, p.z));
+        const curve = new THREE.CatmullRomCurve3(pts3D, false, 'catmullrom', 0.05);
+        const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.16, 8, false);
+        const tubeMat = new THREE.MeshStandardMaterial({
+          color: plan.egressPass ? '#F59E0B' : '#F43F5E',
+          emissive: plan.egressPass ? '#B45309' : '#BE123C',
+          emissiveIntensity: 0.65,
+          roughness: 0.3
+        });
+        buildingGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
+      }
+
+      plan.egressExits.forEach(ex => {
+        const marker = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.45, 0.45, 3.9, 16),
+          new THREE.MeshStandardMaterial({ color: '#10B981', emissive: '#059669', emissiveIntensity: 0.5 })
+        );
+        marker.position.set(ex.x, 1.95, ex.z);
+        buildingGroup.add(marker);
+      });
+    }
+
+    let camAnim = null;
+    function setCameraPreset(preset) {
+      const span = Math.max(state.width, state.depth);
+      const targets = {
+        iso:   { pos: new THREE.Vector3(span * 0.85, span * 0.9, span * 0.95), target: new THREE.Vector3(0, 0, 0) },
+        top:   { pos: new THREE.Vector3(0, span * 1.45, 0.01), target: new THREE.Vector3(0, 0, 0) },
+        front: { pos: new THREE.Vector3(0, span * 0.32, span * 1.25), target: new THREE.Vector3(0, 1.5, 0) },
+        reset: { pos: new THREE.Vector3(42, 46, 52), target: new THREE.Vector3(0, 0, 0) }
+      };
+      if (targets[preset]) {
+        camAnim = { ...targets[preset], t: 0 };
+      }
+    }
+
+    document.querySelectorAll('.cam-btn').forEach(btn => {
+      btn.addEventListener('click', () => setCameraPreset(btn.dataset.cam));
+    });
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const tooltip = document.getElementById('hover-tooltip');
+    let hoveredMesh = null;
+
+    renderer.domElement.addEventListener('pointermove', (e) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(interactiveMeshes, false);
+
+      if (hoveredMesh) {
+        hoveredMesh.material.emissive.setHex(0x000000);
+        hoveredMesh = null;
+      }
+
+      if (hits.length > 0) {
+        hoveredMesh = hits[0].object;
+        hoveredMesh.material.emissive.setHex(0x1E3A8A);
+        const r = hoveredMesh.userData.room;
+        document.getElementById('tt-name').textContent = r.name;
+        document.getElementById('tt-badge').textContent = r.style.badge;
+        document.getElementById('tt-area').textContent = `${r.area.toFixed(1)} m²`;
+        document.getElementById('tt-dim').textContent = `${r.w.toFixed(1)} × ${r.d.toFixed(1)} m`;
+        document.getElementById('tt-cap').textContent = r.capacity > 0 ? `${r.capacity} pax` : 'Support';
+        tooltip.classList.remove('hidden');
+        tooltip.style.left = `${Math.min(window.innerWidth - 270, e.clientX + 14)}px`;
+        tooltip.style.top = `${Math.min(window.innerHeight - 110, e.clientY + 14)}px`;
+      } else {
+        tooltip.classList.add('hidden');
+      }
+    });
+
+    renderer.domElement.addEventListener('pointerleave', () => tooltip.classList.add('hidden'));
+    document.getElementById('tt-close').addEventListener('click', () => tooltip.classList.add('hidden'));
+
+    const resizeObserver = new ResizeObserver(() => {
+      const w = webglContainer.clientWidth;
+      const h = webglContainer.clientHeight;
+      if (w > 0 && h > 0) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+      render2DCad(currentPlanData);
+    });
+    resizeObserver.observe(webglContainer);
+    resizeObserver.observe(cadCanvas.parentElement);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (camAnim) {
+        camAnim.t += 0.06;
+        camera.position.lerp(camAnim.pos, 0.12);
+        controls.target.lerp(camAnim.target, 0.12);
+        if (camAnim.t >= 1) camAnim = null;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // =========================================================================
+    // 6. DYNAMIC UI CONTROLS, HUD BINDINGS, VIEWPORT LAYOUT & EXPORTS
+    // =========================================================================
+    function renderDynamicControls() {
+      const container = document.getElementById('dynamic-controls');
+      const t = I18N[state.lang];
+
+      const sliderRow = (id, label, min, max, step, val, unit = '') => `
+        <div class="space-y-1">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300">${label}</span>
+            <span id="val-${id}" class="font-mono-num text-white font-medium">${val}${unit}</span>
+          </div>
+          <input type="range" id="inp-${id}" min="${min}" max="${max}" step="${step}" value="${val}" />
+        </div>
+      `;
+
+      if (state.typology === 'hotel') {
+        const h = state.hotel;
+        container.innerHTML = `
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-cyan-400">3. ${t.typHotel}</h2>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">${t.corridorLayout}</label>
+            <select id="inp-h-corr" class="w-full bg-slate-900/90 border border-slate-700/70 rounded-lg px-2 py-1.5 text-xs text-white">
+              <option value="double" ${h.corridorType === 'double' ? 'selected' : ''}>${t.doubleLoaded}</option>
+              <option value="single" ${h.corridorType === 'single' ? 'selected' : ''}>${t.singleLoaded}</option>
+            </select>
+          </div>
+          ${sliderRow('h-keys', t.targetKeys, 8, 60, 1, h.targetKeys, ' keys')}
+          ${sliderRow('h-bay', t.bayWidth, 3.6, 5.4, 0.1, h.bayWidth, ' m')}
+          ${sliderRow('h-depth', t.roomDepth, 6.5, 10.5, 0.5, h.roomDepth, ' m')}
+          ${sliderRow('h-suite', t.suiteRatio, 0, 40, 5, h.suiteRatio, '%')}
+          ${sliderRow('h-boh', t.bohRatio, 8, 25, 2, h.bohRatio, '%')}
+        `;
+        document.getElementById('inp-h-corr').onchange = (e) => { h.corridorType = e.target.value; updateAll(); };
+        bindSlider('h-keys', v => h.targetKeys = +v, ' keys');
+        bindSlider('h-bay', v => h.bayWidth = +v, ' m');
+        bindSlider('h-depth', v => h.roomDepth = +v, ' m');
+        bindSlider('h-suite', v => h.suiteRatio = +v, '%');
+        bindSlider('h-boh', v => h.bohRatio = +v, '%');
+      } else if (state.typology === 'residential') {
+        const r = state.residential;
+        container.innerHTML = `
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-cyan-400">3. ${t.typResi}</h2>
+          ${sliderRow('r-units', t.targetUnits, 6, 48, 1, r.targetUnits, ' units')}
+          ${sliderRow('r-depth', t.unitDepth, 6.5, 11.0, 0.5, r.unitDepth, ' m')}
+          ${sliderRow('r-corr', t.corridorWidth, 1.5, 3.0, 0.1, r.corridorWidth, ' m')}
+          ${sliderRow('r-fac', t.facilitiesPct, 0, 25, 2, r.facilitiesPct, '%')}
+          ${sliderRow('r-studio', t.mixStudio, 0, 80, 5, r.mixStudio, '%')}
+          ${sliderRow('r-1br', t.mix1BR, 0, 80, 5, r.mix1BR, '%')}
+          ${sliderRow('r-2br', t.mix2BR, 0, 60, 5, r.mix2BR, '%')}
+          ${sliderRow('r-3br', t.mix3BR, 0, 30, 5, r.mix3BR, '%')}
+        `;
+        bindSlider('r-units', v => r.targetUnits = +v, ' units');
+        bindSlider('r-depth', v => r.unitDepth = +v, ' m');
+        bindSlider('r-corr', v => r.corridorWidth = +v, ' m');
+        bindSlider('r-fac', v => r.facilitiesPct = +v, '%');
+        bindSlider('r-studio', v => r.mixStudio = +v, '%');
+        bindSlider('r-1br', v => r.mix1BR = +v, '%');
+        bindSlider('r-2br', v => r.mix2BR = +v, '%');
+        bindSlider('r-3br', v => r.mix3BR = +v, '%');
+      } else if (state.typology === 'retail') {
+        const ret = state.retail;
+        container.innerHTML = `
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-cyan-400">3. ${t.typRetail}</h2>
+          ${sliderRow('ret-anchor', t.anchorPct, 0, 50, 2, ret.anchorPct, '%')}
+          ${sliderRow('ret-bay', t.shopBayWidth, 4.5, 9.0, 0.5, ret.shopBayWidth, ' m')}
+          ${sliderRow('ret-conc', t.concourseWidth, 3.6, 8.0, 0.2, ret.concourseWidth, ' m')}
+          ${sliderRow('ret-fnb', t.fnbPct, 0, 40, 2, ret.fnbPct, '%')}
+        `;
+        bindSlider('ret-anchor', v => ret.anchorPct = +v, '%');
+        bindSlider('ret-bay', v => ret.shopBayWidth = +v, ' m');
+        bindSlider('ret-conc', v => ret.concourseWidth = +v, ' m');
+        bindSlider('ret-fnb', v => ret.fnbPct = +v, '%');
+      } else if (state.typology === 'office') {
+        const off = state.office;
+        container.innerHTML = `
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-cyan-400">3. ${t.typOffice}</h2>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">${t.officePreset}</label>
+            <select id="inp-o-preset" class="w-full bg-slate-900/90 border border-slate-700/70 rounded-lg px-2 py-1.5 text-xs text-white">
+              <option value="startup" ${off.preset === 'startup' ? 'selected' : ''}>${t.presetStartup}</option>
+              <option value="corp" ${off.preset === 'corp' ? 'selected' : ''}>${t.presetCorp}</option>
+              <option value="law" ${off.preset === 'law' ? 'selected' : ''}>${t.presetLaw}</option>
+            </select>
+          </div>
+          ${sliderRow('o-head', t.headcount, 30, 300, 5, off.headcount, ' pax')}
+          ${sliderRow('o-share', t.sharingRatio, 0.6, 1.0, 0.05, off.sharingRatio, '×')}
+          ${sliderRow('o-desk', t.deskWidth, 1.2, 1.8, 0.15, off.deskWidth, ' m')}
+          ${sliderRow('o-mtg', t.meetingRooms, 1, 10, 1, off.meetingRooms, ' rms')}
+        `;
+        document.getElementById('inp-o-preset').onchange = (e) => {
+          off.preset = e.target.value;
+          if (off.preset === 'startup') { off.sharingRatio = 0.80; off.deskWidth = 1.35; off.meetingRooms = 4; }
+          if (off.preset === 'corp')    { off.sharingRatio = 0.90; off.deskWidth = 1.50; off.meetingRooms = 6; }
+          if (off.preset === 'law')     { off.sharingRatio = 1.00; off.deskWidth = 1.65; off.meetingRooms = 8; }
+          renderDynamicControls();
+          updateAll();
+        };
+        bindSlider('o-head', v => off.headcount = +v, ' pax');
+        bindSlider('o-share', v => off.sharingRatio = +v, '×');
+        bindSlider('o-desk', v => off.deskWidth = +v, ' m');
+        bindSlider('o-mtg', v => off.meetingRooms = +v, ' rms');
+      }
+    }
+
+    function bindSlider(id, setter, suffix) {
+      const inp = document.getElementById(`inp-${id}`);
+      const lbl = document.getElementById(`val-${id}`);
+      if (!inp) return;
+      inp.oninput = (e) => {
+        setter(e.target.value);
+        lbl.textContent = `${e.target.value}${suffix}`;
+        updateAll();
+      };
+    }
+
+    function updateHUD(plan) {
+      document.getElementById('lbl-gfa-badge').textContent = `${plan.gfa.toFixed(0)} m²`;
+
+      const banner = document.getElementById('feasibility-banner');
+      const fTitle = document.getElementById('feasibility-title');
+      if (plan.targetMet) {
+        banner.className = 'pointer-events-auto hud-glass rounded-2xl px-3.5 py-2.5 border-l-4 border-emerald-500 transition-colors';
+        fTitle.className = 'text-xs font-bold text-emerald-400';
+        fTitle.textContent = state.lang === 'th' ? 'ผ่านเกณฑ์ผังและกฎหมาย • PASS' : 'CODE & TARGET FIT • PASS';
+      } else {
+        banner.className = 'pointer-events-auto hud-glass rounded-2xl px-3.5 py-2.5 border-l-4 border-rose-500 transition-colors';
+        fTitle.className = 'text-xs font-bold text-rose-400';
+        fTitle.textContent = state.lang === 'th' ? 'เกินเกณฑ์/พื้นที่ไม่พอ • CHECK' : 'CAPACITY / CODE ALERT';
+      }
+      document.getElementById('feasibility-eff').textContent = `${plan.efficiency}%`;
+      document.getElementById('feasibility-msg').textContent = plan.statusSummary;
+
+      document.getElementById('mobile-pill-eff').textContent = `${plan.efficiency}%`;
+      document.getElementById('mobile-pill-dot').className = `w-2 h-2 rounded-full ${plan.targetMet ? 'bg-emerald-400' : 'bg-rose-400'}`;
+      document.getElementById('tablet-pill-eff').textContent = `${plan.efficiency}%`;
+
+      document.getElementById('egress-dist-val').textContent = `${plan.maxTravelDist}m / ${plan.maxEgressLimit}m`;
+      const egBadge = document.getElementById('egress-dist-badge');
+      egBadge.textContent = plan.egressPass ? 'PASS' : 'FAIL';
+      egBadge.className = `px-1 rounded font-bold ${plan.egressPass ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/25 text-rose-300'}`;
+
+      document.getElementById('deadend-dist-val').textContent = `${plan.deadEndDist}m / ${plan.deadEndLimit}m`;
+      const deBadge = document.getElementById('deadend-dist-badge');
+      deBadge.textContent = plan.deadEndPass ? 'PASS' : 'FAIL';
+      deBadge.className = `px-1 rounded font-bold ${plan.deadEndPass ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/25 text-rose-300'}`;
+
+      const kpiHtml = plan.kpis.map(k => `
+        <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[10px] text-slate-400 truncate">${k.label}</div>
+          <div class="text-sm font-mono-num font-bold ${k.accent} mt-0.5">${k.value}</div>
+          <div class="text-[10px] font-mono-num text-slate-500 truncate mt-0.5">${k.sub}</div>
+        </div>
+      `).join('');
+      document.getElementById('kpi-grid').innerHTML = kpiHtml;
+      document.getElementById('mobile-kpi-slot').innerHTML = kpiHtml;
+
+      document.getElementById('schedule-count').textContent = `${plan.rooms.length} Zones`;
+      document.getElementById('mobile-schedule-count').textContent = `${plan.rooms.length} Zones`;
+      const schedHtml = plan.rooms.map(r => `
+        <div class="flex items-center justify-between gap-2 bg-slate-900/60 hover:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${r.style.hex}"></span>
+            <span class="truncate text-slate-200 text-[11px]">${r.name}</span>
+          </div>
+          <span class="font-mono-num text-cyan-300 text-[11px] shrink-0">${r.area.toFixed(1)} m²</span>
+        </div>
+      `).join('');
+      document.getElementById('schedule-list').innerHTML = schedHtml;
+      document.getElementById('mobile-schedule-list').innerHTML = schedHtml;
+    }
+
+    function updateAll() {
+      currentPlanData = computeSpaceProgram();
+      updateHUD(currentPlanData);
+      render2DCad(currentPlanData);
+      rebuild3DScene(currentPlanData);
+    }
+
+    function applyViewportLayout() {
+      document.querySelectorAll('.viewmode-btn').forEach(b => {
+        if (b.dataset.viewmode === state.viewMode) {
+          b.className = 'viewmode-btn active px-2 md:px-2.5 py-1.5 rounded-lg font-semibold bg-cyan-500 text-slate-950 shadow transition cursor-pointer';
+        } else {
+          b.className = 'viewmode-btn px-2 md:px-2.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-white transition cursor-pointer';
+        }
+      });
+
+      const p2d = document.getElementById('pane-2d');
+      const p3d = document.getElementById('pane-3d');
+      const camBar = document.getElementById('cam-preset-bar');
+      const mobCamBar = document.getElementById('mobile-cam-bar');
+
+      if (state.viewMode === '2d') {
+        p2d.className = 'relative w-full h-full cad-grid-bg overflow-hidden select-none';
+        p3d.className = 'hidden';
+        camBar.classList.add('hidden');
+        mobCamBar.classList.add('hidden');
+      } else if (state.viewMode === '3d') {
+        p2d.className = 'hidden';
+        p3d.className = 'relative w-full h-full overflow-hidden';
+        camBar.classList.remove('hidden');
+        mobCamBar.classList.remove('hidden');
+      } else {
+        p2d.className = 'relative w-full lg:w-1/2 h-1/2 lg:h-full cad-grid-bg border-b lg:border-b-0 lg:border-r border-slate-800/90 overflow-hidden select-none';
+        p3d.className = 'relative w-full lg:w-1/2 h-1/2 lg:h-full overflow-hidden';
+        camBar.classList.remove('hidden');
+        mobCamBar.classList.remove('hidden');
+      }
+
+      requestAnimationFrame(() => {
+        fitCadView();
+        render2DCad(currentPlanData);
+        const w = webglContainer.clientWidth;
+        const h = webglContainer.clientHeight;
+        if (w > 0 && h > 0) {
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        }
+      });
+    }
+
+    document.querySelectorAll('.viewmode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.viewMode = btn.dataset.viewmode;
+        applyViewportLayout();
+      });
+    });
+
+    document.querySelectorAll('.typology-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.typology = btn.dataset.typology;
+        document.querySelectorAll('.typology-btn').forEach(b => {
+          b.className = 'typology-btn touch-target flex-1 sm:flex-initial justify-center px-2.5 md:px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all text-slate-300 hover:text-white hover:bg-slate-800/70 whitespace-nowrap cursor-pointer';
+        });
+        btn.className = 'typology-btn active touch-target flex-1 sm:flex-initial justify-center px-2.5 md:px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 whitespace-nowrap cursor-pointer';
+        renderDynamicControls();
+        updateAll();
+      });
+    });
+
+    document.querySelectorAll('.render-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.renderMode = btn.dataset.mode;
+        document.querySelectorAll('.render-mode-btn').forEach(b => {
+          b.className = 'render-mode-btn px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-white transition cursor-pointer';
+        });
+        document.querySelectorAll(`.render-mode-btn[data-mode="${state.renderMode}"]`).forEach(b => {
+          b.className = 'render-mode-btn active px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-slate-700 text-white transition cursor-pointer';
+        });
+        rebuild3DScene(currentPlanData);
+      });
+    });
+
+    document.getElementById('inp-width').oninput = (e) => {
+      state.width = +e.target.value;
+      document.getElementById('val-width').textContent = `${state.width.toFixed(1)} m`;
+      updateAll();
+    };
+    document.getElementById('inp-depth').oninput = (e) => {
+      state.depth = +e.target.value;
+      document.getElementById('val-depth').textContent = `${state.depth.toFixed(1)} m`;
+      updateAll();
+    };
+    document.getElementById('inp-core').onchange = (e) => { state.coreType = e.target.value; updateAll(); };
+    document.getElementById('inp-grid').onchange = (e) => { state.gridSpan = +e.target.value; updateAll(); };
+    document.getElementById('inp-mullion-snap').onchange = (e) => { state.mullionSnap = e.target.checked; updateAll(); };
+    document.getElementById('inp-mullion-mod').onchange = (e) => { state.mullionModule = +e.target.value; updateAll(); };
+    document.getElementById('inp-sprinkler').onchange = (e) => { state.sprinklered = e.target.value; updateAll(); };
+
+    function applyLanguage() {
+      const t = I18N[state.lang];
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (t[key]) el.textContent = t[key];
+      });
+      renderDynamicControls();
+      updateAll();
+    }
+
+    document.getElementById('lang-toggle').addEventListener('click', () => {
+      state.lang = state.lang === 'th' ? 'en' : 'th';
+      applyLanguage();
+    });
+
+    // Mobile Bottom Sheet & Tablet Panel Controls
+    let drawerOpen = false;
+    function setDrawerOpen(open) {
+      drawerOpen = open;
+      const drawer = document.getElementById('left-drawer');
+      const chev = document.getElementById('drawer-chevron');
+      if (drawerOpen) {
+        drawer.classList.remove('translate-y-[calc(100%-58px)]');
+        drawer.classList.add('translate-y-0');
+        chev.textContent = '▼ CLOSE';
+      } else {
+        drawer.classList.add('translate-y-[calc(100%-58px)]');
+        drawer.classList.remove('translate-y-0');
+        chev.textContent = '▲ OPEN';
+      }
+    }
+
+    document.getElementById('mobile-drawer-toggle').addEventListener('click', () => setDrawerOpen(!drawerOpen));
+
+    const tabParams = document.getElementById('sheet-tab-params');
+    const tabMetrics = document.getElementById('sheet-tab-metrics');
+    const paneParams = document.getElementById('mobile-params-pane');
+    const paneMetrics = document.getElementById('mobile-metrics-pane');
+
+    function switchSheetTab(tab) {
+      if (tab === 'params') {
+        tabParams.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-slate-950 transition cursor-pointer';
+        tabMetrics.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition cursor-pointer';
+        paneParams.classList.remove('hidden');
+        paneMetrics.classList.add('hidden');
+      } else {
+        tabMetrics.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-slate-950 transition cursor-pointer';
+        tabParams.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition cursor-pointer';
+        paneMetrics.classList.remove('hidden');
+        paneParams.classList.add('hidden');
+      }
+      setDrawerOpen(true);
+    }
+
+    tabParams.addEventListener('click', () => switchSheetTab('params'));
+    tabMetrics.addEventListener('click', () => switchSheetTab('metrics'));
+    document.getElementById('mobile-status-pill').addEventListener('click', () => switchSheetTab('metrics'));
+
+    let tabletRightVisible = true;
+    document.getElementById('tablet-metrics-toggle').addEventListener('click', () => {
+      tabletRightVisible = !tabletRightVisible;
+      const rightPanel = document.getElementById('right-hud-panel');
+      if (tabletRightVisible) {
+        rightPanel.classList.remove('translate-x-[120%]');
+      } else {
+        rightPanel.classList.add('translate-x-[120%]');
+      }
+    });
+
+    // UTF-8 CSV Export
+    document.getElementById('export-csv-btn').addEventListener('click', () => {
+      if (!currentPlanData) return;
+      const rows = [
+        ['ARCHI-FIT Space Program Schedule', `Typology: ${state.typology.toUpperCase()}`, `GFA: ${currentPlanData.gfa} m2`, `Net Area: ${currentPlanData.netArea.toFixed(1)} m2`, `Efficiency: ${currentPlanData.efficiency}%`, `Max Egress: ${currentPlanData.maxTravelDist}m / ${currentPlanData.maxEgressLimit}m`],
+        [],
+        ['Zone ID', 'Room / Zone Name (EN)', 'Room / Zone Name (TH)', 'Category', 'Width (m)', 'Depth (m)', 'Area (m2)', 'Capacity (pax)']
+      ];
+      currentPlanData.rooms.forEach(r => {
+        rows.push([r.id, `"${r.nameEn}"`, `"${r.nameTh}"`, r.style.badge, r.w.toFixed(2), r.d.toFixed(2), r.area.toFixed(2), r.capacity]);
+      });
+      const csvContent = '\uFEFF' + rows.map(e => e.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ARCHI-FIT_${state.typology}_${state.width}x${state.depth}m.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Clean GitHub Repository .ZIP Bundle Exporter (Strips any sandbox injected scripts)
+    document.getElementById('export-zip-btn').addEventListener('click', async () => {
+      if (typeof JSZip === 'undefined') return;
+      const zip = new JSZip();
+
+      const cleanDoc = document.documentElement.cloneNode(true);
+      cleanDoc.querySelectorAll('script').forEach(s => {
+        const src = s.getAttribute('src') || '';
+        const isAllowedCdn = src.includes('tailwindcss.com') || src.includes('three') || src.includes('jszip');
+        const isMainAppScript = !src && s.textContent.includes('I18N');
+        if (!isAllowedCdn && !isMainAppScript) {
+          s.remove();
+        }
+      });
+      const cleanHtml = '<!DOCTYPE html>\n' + cleanDoc.outerHTML;
+      zip.file('index.html', cleanHtml);
+
+      zip.file('README.md', `# ARCHI-FIT — Parametric 2D CAD & 3D Test Fit Studio
+
+Real-time browser-based **2D CAD & 3D WebGL Parametric Test Fit Studio** for **Hotel**, **Residential**, **Retail**, and **Office** architectural feasibility studies.
+
+## Features
+- **Dual 2D CAD + 3D WebGL Viewport** (2D Plan, Split View, and 3D Massing)
+- **Fire Egress & Dead-End Corridor Verification** (NFPA / IBC code checks)
+- **Facade Mullion Grid Snap** (1.20m / 1.35m / 1.50m curtain wall module alignment)
+- **Cross-Platform Responsive UI** (Desktop PC, Tablet, and Mobile touch gestures)
+- **UTF-8 CSV Space Program Export**
+
+## Quick Start
+Open \`index.html\` directly in any modern browser or deploy via **GitHub Pages**.
+`);
+
+      zip.file('LICENSE', `MIT License
+
+Copyright (c) ${new Date().getFullYear()} ARCHI-FIT Studio
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+`);
+
+      zip.file('.gitignore', `.DS_Store\nThumbs.db\n.vscode/\n.idea/\n*.swp\n`);
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'archi-fit-parametric-studio-github.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Initial Boot (Handles both already-loaded DOM and fresh page load)
+    function initApp() {
+      applyLanguage();
+      applyViewportLayout();
+      requestAnimationFrame(() => {
+        fitCadView();
+        render2DCad(currentPlanData);
+        rebuild3DScene(currentPlanData);
+        const w = webglContainer.clientWidth;
+        const h = webglContainer.clientHeight;
+        if (w > 0 && h > 0) {
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        }
+        if (window.innerWidth < 768) setCameraPreset('iso');
+      });
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      initApp();
+    } else {
+      window.addEventListener('DOMContentLoaded', initApp);
+    }
+  </script>
 
 </body></html>
